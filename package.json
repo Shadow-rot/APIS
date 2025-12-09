@@ -1,0 +1,13 @@
+{
+  "name": "aviaxmusic",
+  "version": "1.0.0",
+  "description": "Telegram Music Bot",
+  "engines": {
+    "node": "18.x",
+    "npm": "9.x"
+  },
+  "dependencies": {},
+  "scripts": {
+    "postinstall": "echo 'Node.js installed successfully'"
+  }
+}
