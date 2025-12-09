@@ -43,14 +43,14 @@ GIT_TOKEN = getenv(
     "GIT_TOKEN", "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"
 )  # Fill this variable if your upstream repository is private
 
-SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/NexGenBots")
-SUPPORT_GROUP = getenv("SUPPORT_GROUP", "https://t.me/NexGenSpam")
+SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/siya_infoo")
+SUPPORT_GROUP = getenv("SUPPORT_GROUP", "https://t.me/loooooooohkooe")
 
 # Set this to True if you want the assistant to automatically leave chats after an interval
 AUTO_LEAVING_ASSISTANT = bool(getenv("AUTO_LEAVING_ASSISTANT", False))
 
 # make your bots privacy from telegra.ph and put your url here 
-PRIVACY_LINK = getenv("PRIVACY_LINK", "https://telegra.ph/Privacy-Policy-for-AviaxMusic-08-14")
+PRIVACY_LINK = getenv("PRIVACY_LINK", "https://telegram.org/tos/mini-apps")
 
 
 # Get this credentials from https://developer.spotify.com/dashboard
