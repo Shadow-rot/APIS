@@ -3,7 +3,6 @@ import os
 import re
 from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
-from datetime import datetime
 
 import aiohttp
 from pyrogram import Client, filters
@@ -15,7 +14,6 @@ from pyrogram.types import (
     InlineQueryResultPhoto,
     InputTextMessageContent,
     CallbackQuery,
-    Message
 )
 
 import config
@@ -26,18 +24,15 @@ download_cache: Dict[str, dict] = {}
 search_cache: Dict[str, dict] = {}
 
 # Progress animations
-DOWNLOAD_FRAMES = ["⬇️", "⏬", "📥", "💾"]
-UPLOAD_FRAMES = ["⬆️", "⏫", "📤", "☁️"]
+FRAMES = ["⬇️", "⏬", "📥", "💾", "⬆️", "⏫", "📤", "☁️"]
 
 
 def is_youtube_url(url: str) -> bool:
     """Validate YouTube URL"""
-    youtube_regex = (
-        r'(https?://)?(www\.)?'
-        '(youtube|youtu|youtube-nocookie)\.(com|be)/'
-        '(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
-    )
-    return bool(re.match(youtube_regex, url))
+    return bool(re.match(
+        r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})',
+        url
+    ))
 
 
 def extract_video_id(url: str) -> Optional[str]:
@@ -50,19 +45,13 @@ def extract_video_id(url: str) -> Optional[str]:
     if parsed.hostname in ['www.youtube.com', 'youtube.com', 'm.youtube.com']:
         if parsed.path == '/watch':
             return parse_qs(parsed.query).get('v', [None])[0]
-        elif parsed.path.startswith('/embed/'):
+        elif parsed.path.startswith(('/embed/', '/v/')):
             return parsed.path.split('/')[2]
-        elif parsed.path.startswith('/v/'):
-            return parsed.path.split('/')[2]
-    elif parsed.hostname in ['youtu.be']:
+    elif parsed.hostname == 'youtu.be':
         return parsed.path[1:]
     
-    # Try to extract from any URL format
     match = re.search(r'(?:v=|/)([0-9A-Za-z_-]{11})', url)
-    if match:
-        return match.group(1)
-    
-    return None
+    return match.group(1) if match else None
 
 
 def format_size(bytes_size: int) -> str:
@@ -107,8 +96,7 @@ async def get_video_info(video_url: str) -> Optional[dict]:
     try:
         from py_yt import VideosSearch
         
-        if "&" in video_url:
-            video_url = video_url.split("&")[0]
+        video_url = video_url.split("&")[0] if "&" in video_url else video_url
         
         results_search = VideosSearch(video_url, limit=1)
         results = await results_search.next()
@@ -134,11 +122,13 @@ async def get_video_info(video_url: str) -> Optional[dict]:
 async def download_from_api(video_id: str, media_type: str = "song", max_retries: int = 15) -> Optional[str]:
     """Download from API with retry logic"""
     try:
-        base_url = config.API_URL if media_type == "song" else config.VIDEO_API_URL
-        api_endpoint = f"{base_url}/{media_type}/{video_id}"
+        # Get API URL and KEY from config
+        base_url = getattr(config, 'VIDEO_API_URL', config.API_URL) if media_type == "video" else config.API_URL
+        api_key = getattr(config, 'API_KEY', None)
         
-        if hasattr(config, 'API_KEY') and config.API_KEY:
-            api_endpoint += f"?api={config.API_KEY}"
+        api_endpoint = f"{base_url}/{media_type}/{video_id}"
+        if api_key:
+            api_endpoint += f"?api={api_key}"
         
         download_folder = "downloads"
         os.makedirs(download_folder, exist_ok=True)
@@ -147,7 +137,6 @@ async def download_from_api(video_id: str, media_type: str = "song", max_retries
         for ext in ["mp3", "m4a", "webm", "mp4", "mkv"]:
             file_path = f"{download_folder}/{video_id}.{ext}"
             if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                print(f"✅ File exists: {file_path}")
                 return file_path
         
         async with aiohttp.ClientSession() as session:
@@ -155,7 +144,7 @@ async def download_from_api(video_id: str, media_type: str = "song", max_retries
                 try:
                     async with session.get(api_endpoint, timeout=aiohttp.ClientTimeout(total=30)) as response:
                         if response.status != 200:
-                            await asyncio.sleep(3)
+                            await asyncio.sleep(2)
                             continue
                         
                         data = await response.json()
@@ -165,10 +154,7 @@ async def download_from_api(video_id: str, media_type: str = "song", max_retries
                             download_url = data.get("link") or data.get("download_url") or data.get("url")
                             
                             if not download_url:
-                                print(f"❌ No download URL: {data}")
                                 return None
-                            
-                            print(f"📥 Downloading from API...")
                             
                             file_format = data.get("format", "mp3" if media_type == "song" else "mp4")
                             file_path = os.path.join(download_folder, f"{video_id}.{file_format}")
@@ -176,75 +162,43 @@ async def download_from_api(video_id: str, media_type: str = "song", max_retries
                             async with session.get(download_url, timeout=aiohttp.ClientTimeout(total=600)) as file_resp:
                                 if file_resp.status == 200:
                                     with open(file_path, 'wb') as f:
-                                        while True:
-                                            chunk = await file_resp.content.read(8192)
-                                            if not chunk:
-                                                break
+                                        async for chunk in file_resp.content.iter_chunked(8192):
                                             f.write(chunk)
                                     
                                     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                                        print(f"✅ Downloaded: {file_path}")
                                         return file_path
-                                    else:
-                                        print("❌ Empty file")
-                                        return None
-                                else:
-                                    print(f"❌ Download failed: {file_resp.status}")
-                                    return None
+                                return None
                         
                         elif status in ["downloading", "processing"]:
-                            wait_time = 4 if media_type == "song" else 8
-                            print(f"⏳ {status}... ({attempt + 1}/{max_retries})")
-                            await asyncio.sleep(wait_time)
+                            await asyncio.sleep(3 if media_type == "song" else 6)
                         
                         elif status in ["error", "failed"]:
-                            error_msg = data.get("error") or data.get("message") or "Unknown error"
-                            print(f"❌ API error: {error_msg}")
                             return None
                         
                         else:
-                            await asyncio.sleep(3)
+                            await asyncio.sleep(2)
                 
                 except asyncio.TimeoutError:
-                    print(f"⏱️ Timeout ({attempt + 1}/{max_retries})")
                     await asyncio.sleep(2)
-                except Exception as e:
-                    print(f"⚠️ Attempt {attempt + 1} error: {e}")
+                except Exception:
                     await asyncio.sleep(2)
             
-            print(f"❌ Max retries reached")
             return None
     
     except Exception as e:
-        print(f"❌ Download error: {e}")
+        print(f"Download error: {e}")
         return None
 
 
 def create_quality_keyboard(video_id: str, user_id: int, back_to_search: bool = False) -> InlineKeyboardMarkup:
-    """Create quality selection keyboard"""
-    buttons = []
+    """Create simplified quality selection keyboard"""
+    buttons = [
+        [InlineKeyboardButton("🎧 Audio (Best Quality)", callback_data=f"dl_audio_{video_id}_{user_id}")],
+        [InlineKeyboardButton("🎬 Video 720p", callback_data=f"dl_video_720p_{video_id}_{user_id}")],
+        [InlineKeyboardButton("🎬 Video 480p", callback_data=f"dl_video_480p_{video_id}_{user_id}")],
+        [InlineKeyboardButton("🎬 Video 360p", callback_data=f"dl_video_360p_{video_id}_{user_id}")]
+    ]
     
-    # Video formats
-    buttons.append([InlineKeyboardButton("━━━━ 📹 VIDEO ━━━━", callback_data="header")])
-    buttons.append([
-        InlineKeyboardButton("🎬 720p", callback_data=f"dl_video_720p_{video_id}_{user_id}"),
-        InlineKeyboardButton("🎬 480p", callback_data=f"dl_video_480p_{video_id}_{user_id}")
-    ])
-    buttons.append([
-        InlineKeyboardButton("🎬 360p", callback_data=f"dl_video_360p_{video_id}_{user_id}")
-    ])
-    
-    # Audio formats
-    buttons.append([InlineKeyboardButton("━━━━ 🎵 AUDIO ━━━━", callback_data="header")])
-    buttons.append([
-        InlineKeyboardButton("🎧 High", callback_data=f"dl_audio_high_{video_id}_{user_id}"),
-        InlineKeyboardButton("🎧 Medium", callback_data=f"dl_audio_medium_{video_id}_{user_id}")
-    ])
-    buttons.append([
-        InlineKeyboardButton("🎧 Low", callback_data=f"dl_audio_low_{video_id}_{user_id}")
-    ])
-    
-    # Navigation
     nav_buttons = []
     if back_to_search:
         nav_buttons.append(InlineKeyboardButton("◀️ Back", callback_data=f"back_search_{user_id}"))
@@ -291,7 +245,6 @@ def create_search_keyboard(results: List[dict], user_id: int, page: int = 0) -> 
     return InlineKeyboardMarkup(buttons)
 
 
-# Inline query handler
 @app.on_inline_query()
 async def inline_handler(client: Client, inline_query: InlineQuery):
     """Handle inline queries"""
@@ -347,7 +300,7 @@ async def inline_handler(client: Client, inline_query: InlineQuery):
                 f"**🎵 Title:** `{video_info.get('title', 'Unknown')}`\n"
                 f"**⏱ Duration:** `{video_info.get('duration', 'Unknown')}`\n"
                 f"**👤 Channel:** `{video_info.get('channel', 'Unknown')}`\n\n"
-                f"**Select quality below:**"
+                f"**Select format below:**"
             ),
             reply_markup=create_quality_keyboard(video_id, inline_query.from_user.id)
         )]
@@ -395,7 +348,7 @@ async def inline_handler(client: Client, inline_query: InlineQuery):
                     f"**🎵 {result.get('title', 'Unknown')}**\n\n"
                     f"**⏱ Duration:** `{result.get('duration', 'Unknown')}`\n"
                     f"**👤 Channel:** `{result.get('channel', 'Unknown')}`\n\n"
-                    f"**Select quality below:**"
+                    f"**Select format below:**"
                 ),
                 reply_markup=create_quality_keyboard(
                     result.get('video_id', ''),
@@ -407,7 +360,6 @@ async def inline_handler(client: Client, inline_query: InlineQuery):
     await inline_query.answer(results=results, cache_time=300)
 
 
-# Callback: Select video
 @app.on_callback_query(filters.regex(r'^select_'))
 async def select_callback(client: Client, callback: CallbackQuery):
     """Handle video selection"""
@@ -435,7 +387,7 @@ async def select_callback(client: Client, callback: CallbackQuery):
                 f"**🎵 Title:** `{info.get('title', 'Unknown')}`\n"
                 f"**⏱ Duration:** `{info.get('duration', 'Unknown')}`\n"
                 f"**👤 Channel:** `{info.get('channel', 'Unknown')}`\n\n"
-                f"**Select quality below:**"
+                f"**Select format below:**"
             ),
             reply_markup=create_quality_keyboard(video_id, user_id, back_to_search=True)
         )
@@ -444,7 +396,6 @@ async def select_callback(client: Client, callback: CallbackQuery):
         await callback.answer("Error", show_alert=True)
 
 
-# Callback: Back to search
 @app.on_callback_query(filters.regex(r'^back_search_'))
 async def back_callback(client: Client, callback: CallbackQuery):
     """Back to search results"""
@@ -471,7 +422,6 @@ async def back_callback(client: Client, callback: CallbackQuery):
         await callback.answer("Error", show_alert=True)
 
 
-# Callback: Page navigation
 @app.on_callback_query(filters.regex(r'^page_'))
 async def page_callback(client: Client, callback: CallbackQuery):
     """Handle pagination"""
@@ -497,19 +447,24 @@ async def page_callback(client: Client, callback: CallbackQuery):
         await callback.answer("Error", show_alert=True)
 
 
-# Callback: Download
 @app.on_callback_query(filters.regex(r'^dl_'))
 async def download_callback(client: Client, callback: CallbackQuery):
-    """Handle download"""
+    """Handle download - FIXED"""
     data = callback.data.split('_')
     
-    if len(data) < 5:
+    # Parse callback data
+    if len(data) == 4:  # dl_audio_videoid_userid
+        format_type = data[1]
+        video_id = data[2]
+        user_id = int(data[3])
+        quality = "Best"
+    elif len(data) == 5:  # dl_video_720p_videoid_userid
+        format_type = data[1]
+        quality = data[2]
+        video_id = data[3]
+        user_id = int(data[4])
+    else:
         return await callback.answer("Invalid!", show_alert=True)
-    
-    format_type = data[1]  # video or audio
-    quality = data[2]
-    video_id = data[3]
-    user_id = int(data[4])
     
     if callback.from_user.id != user_id:
         return await callback.answer("❌ Not for you!", show_alert=True)
@@ -522,27 +477,32 @@ async def download_callback(client: Client, callback: CallbackQuery):
     
     await callback.answer(f"⏳ Downloading {quality} {format_type}...")
     
-    # Status message
+    # Status message - FIX: Check if message exists
+    status = None
     status_text = f"⬇️ **Downloading {quality} {format_type}...**\n\n`Please wait...`"
     
     try:
-        if callback.message.photo:
-            status = await callback.message.edit_caption(status_text)
-        else:
-            status = await callback.message.edit_text(status_text)
+        if callback.message:
+            if callback.message.photo:
+                status = await callback.message.edit_caption(status_text)
+            else:
+                status = await callback.message.edit_text(status_text)
     except:
-        status = await callback.message.reply_text(status_text)
+        # If edit fails, send new message
+        if callback.message:
+            status = await callback.message.reply_text(status_text)
     
     # Animate
     async def animate():
         for _ in range(3):
-            for frame in DOWNLOAD_FRAMES:
+            for frame in FRAMES[:4]:
                 try:
-                    text = f"{frame} **Downloading {quality} {format_type}...**\n\n`Processing...`"
-                    if status.photo:
-                        await status.edit_caption(text)
-                    else:
-                        await status.edit_text(text)
+                    if status:
+                        text = f"{frame} **Downloading {quality} {format_type}...**\n\n`Processing...`"
+                        if hasattr(status, 'photo') and status.photo:
+                            await status.edit_caption(text)
+                        else:
+                            await status.edit_text(text)
                     await asyncio.sleep(0.5)
                 except:
                     pass
@@ -559,10 +519,11 @@ async def download_callback(client: Client, callback: CallbackQuery):
         if not file_path or not os.path.exists(file_path):
             error_text = "❌ **Download failed!**\n\n`Please try again later.`"
             try:
-                if status.photo:
-                    await status.edit_caption(error_text)
-                else:
-                    await status.edit_text(error_text)
+                if status:
+                    if hasattr(status, 'photo') and status.photo:
+                        await status.edit_caption(error_text)
+                    else:
+                        await status.edit_text(error_text)
             except:
                 pass
             return
@@ -570,10 +531,11 @@ async def download_callback(client: Client, callback: CallbackQuery):
         # Upload
         upload_text = f"⬆️ **Uploading {quality} {format_type}...**\n\n`Almost there...`"
         try:
-            if status.photo:
-                await status.edit_caption(upload_text)
-            else:
-                await status.edit_text(upload_text)
+            if status:
+                if hasattr(status, 'photo') and status.photo:
+                    await status.edit_caption(upload_text)
+                else:
+                    await status.edit_text(upload_text)
         except:
             pass
         
@@ -588,27 +550,29 @@ async def download_callback(client: Client, callback: CallbackQuery):
             f"**Powered by:** @{(await app.get_me()).username}"
         )
         
-        # Upload file
-        if format_type == "video":
-            await callback.message.reply_video(
-                video=file_path,
-                caption=caption,
-                supports_streaming=True
-            )
-        else:
-            await callback.message.reply_audio(
-                audio=file_path,
-                caption=caption,
-                title=title
-            )
+        # Upload file - FIX: Check if message exists
+        if callback.message:
+            if format_type == "video":
+                await callback.message.reply_video(
+                    video=file_path,
+                    caption=caption,
+                    supports_streaming=True
+                )
+            else:
+                await callback.message.reply_audio(
+                    audio=file_path,
+                    caption=caption,
+                    title=title
+                )
         
         # Success
         success_text = f"✅ **Successfully Uploaded!**\n\n`Thank you!`"
         try:
-            if status.photo:
-                await status.edit_caption(success_text)
-            else:
-                await status.edit_text(success_text)
+            if status:
+                if hasattr(status, 'photo') and status.photo:
+                    await status.edit_caption(success_text)
+                else:
+                    await status.edit_text(success_text)
         except:
             pass
         
@@ -623,15 +587,15 @@ async def download_callback(client: Client, callback: CallbackQuery):
         print(f"Download error: {e}")
         error_text = f"❌ **Error occurred!**\n\n`{str(e)}`"
         try:
-            if status.photo:
-                await status.edit_caption(error_text)
-            else:
-                await status.edit_text(error_text)
+            if status:
+                if hasattr(status, 'photo') and status.photo:
+                    await status.edit_caption(error_text)
+                else:
+                    await status.edit_text(error_text)
         except:
             pass
 
 
-# Callback: Close
 @app.on_callback_query(filters.regex(r'^close_'))
 async def close_callback(client: Client, callback: CallbackQuery):
     """Close message"""
@@ -644,7 +608,6 @@ async def close_callback(client: Client, callback: CallbackQuery):
     await callback.answer("✅ Closed!")
 
 
-# Callback: Header (no action)
 @app.on_callback_query(filters.regex(r'^header$'))
 async def header_callback(client: Client, callback: CallbackQuery):
     """Header button"""
