@@ -3,6 +3,7 @@ import time
 from pyrogram import filters
 from pyrogram.enums import ChatType
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from pyrogram.errors import UserNotParticipant
 from py_yt import VideosSearch
 
 import config
@@ -24,10 +25,44 @@ from AviaxMusic.utils.inline import help_pannel, private_panel, start_panel
 from config import BANNED_USERS
 from strings import get_string
 
+FORCE_SUB_CHANNEL = "siya_infoo"
+
+async def check_force_sub(client, message: Message):
+    try:
+        user = await client.get_chat_member(f"@{FORCE_SUB_CHANNEL}", message.from_user.id)
+        if user.status in ["left", "kicked"]:
+            return False
+        return True
+    except UserNotParticipant:
+        return False
+    except Exception:
+        return True
+
+def force_sub_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Join Channel", url=f"https://t.me/{FORCE_SUB_CHANNEL}")
+            ],
+            [
+                InlineKeyboardButton("Try Again", url=f"https://t.me/{app.username}?start=retry")
+            ]
+        ]
+    )
 
 @app.on_message(filters.command(["start"]) & filters.private & ~BANNED_USERS)
 @LanguageStart
 async def start_pm(client, message: Message, _):
+    is_subscribed = await check_force_sub(client, message)
+    
+    if not is_subscribed:
+        await message.reply_photo(
+            photo=config.START_IMG_URL,
+            caption=f"**🔒 Access Denied**\n\nYou must join our channel to use this bot.\n\n👉 Join @{FORCE_SUB_CHANNEL}\n\nThen click **Try Again** button below.",
+            reply_markup=force_sub_keyboard()
+        )
+        return
+    
     await add_served_user(message.from_user.id)
     if len(message.text.split()) > 1:
         name = message.text.split(None, 1)[1]
