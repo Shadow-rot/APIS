@@ -192,7 +192,8 @@ async def inline_handler(client: Client, query: InlineQuery):
                 input_message_content=InputTextMessageContent(
                     "**🎵 YouTube Downloader**\n\n"
                     "Search: `@bot song name`\n"
-                    "URL: `@bot https://youtu.be/xxxxx`"
+                    "URL: `@bot https://youtu.be/xxxxx`\n\n"
+                    "Don't forget to visit @AviaxOfficial"
                 ),
                 thumb_url="https://i.imgur.com/7qKPdJK.png"
             )],
@@ -220,7 +221,7 @@ async def inline_handler(client: Client, query: InlineQuery):
             thumb_url=info.get('thumb', 'https://i.imgur.com/7qKPdJK.png'),
             title=f"📥 {info.get('title', 'Unknown')[:50]}",
             description=f"⏱ {info.get('duration', '')} • {info.get('channel', '')}",
-            caption=f"**📥 {info.get('title', 'Unknown')}**\n\n**⏱** `{info.get('duration', 'Unknown')}`\n**👤** `{info.get('channel', 'Unknown')}`\n\n**Select format:**",
+            caption=f"**📥 {info.get('title', 'Unknown')}**\n\n**⏱** `{info.get('duration', 'Unknown')}`\n**👤** `{info.get('channel', 'Unknown')}`\n\n**Select format:**\n\nDon't forget to visit @AviaxOfficial",
             reply_markup=make_buttons(vid, query.from_user.id)
         )], cache_time=300)
     
@@ -249,7 +250,7 @@ async def inline_handler(client: Client, query: InlineQuery):
             thumb_url=r.get('thumb', 'https://i.imgur.com/7qKPdJK.png'),
             title=f"{i+1}. {r.get('title', 'Unknown')[:40]}",
             description=f"⏱ {r.get('duration', '')} • {r.get('channel', '')}",
-            caption=f"**🎵 {r.get('title', 'Unknown')}**\n\n**⏱** `{r.get('duration', 'Unknown')}`\n**👤** `{r.get('channel', 'Unknown')}`\n\n**Select format:**",
+            caption=f"**🎵 {r.get('title', 'Unknown')}**\n\n**⏱** `{r.get('duration', 'Unknown')}`\n**👤** `{r.get('channel', 'Unknown')}`\n\n**Select format:**\n\nDon't forget to visit @AviaxOfficial",
             reply_markup=make_buttons(r.get('id', ''), query.from_user.id, True)
         ))
     
@@ -273,12 +274,16 @@ async def select_cb(client: Client, cb: CallbackQuery):
     info = data['info']
     
     try:
-        await cb.message.delete()
-        await cb.message.reply_photo(
-            photo=info.get('thumb', 'https://i.imgur.com/7qKPdJK.png'),
-            caption=f"**📥 {info.get('title', 'Unknown')}**\n\n**⏱** `{info.get('duration', 'Unknown')}`\n**👤** `{info.get('channel', 'Unknown')}`\n\n**Select format:**",
-            reply_markup=make_buttons(vid, uid, True)
-        )
+        if cb.message.photo:
+            await cb.message.edit_caption(
+                caption=f"**📥 {info.get('title', 'Unknown')}**\n\n**⏱** `{info.get('duration', 'Unknown')}`\n**👤** `{info.get('channel', 'Unknown')}`\n\n**Select format:**\n\nDon't forget to visit @AviaxOfficial",
+                reply_markup=make_buttons(vid, uid, True)
+            )
+        else:
+            await cb.message.edit_text(
+                text=f"**📥 {info.get('title', 'Unknown')}**\n\n**⏱** `{info.get('duration', 'Unknown')}`\n**👤** `{info.get('channel', 'Unknown')}`\n\n**Select format:**\n\nDon't forget to visit @AviaxOfficial",
+                reply_markup=make_buttons(vid, uid, True)
+            )
         await cb.answer()
     except:
         await cb.answer("Error", show_alert=True)
@@ -298,11 +303,17 @@ async def back_cb(client: Client, cb: CallbackQuery):
         return await cb.answer("❌ Expired!", show_alert=True)
     
     try:
-        await cb.message.delete()
-        await cb.message.reply_text(
-            f"**🔍 Results:** `{data['q']}`\n\n**Found {len(data['results'])} videos**",
-            reply_markup=make_search_buttons(data['results'], uid, 0)
-        )
+        if cb.message.photo:
+            await cb.message.delete()
+            await cb.message.reply_text(
+                f"**🔍 Results:** `{data['q']}`\n\n**Found {len(data['results'])} videos**\n\nDon't forget to visit @AviaxOfficial",
+                reply_markup=make_search_buttons(data['results'], uid, 0)
+            )
+        else:
+            await cb.message.edit_text(
+                f"**🔍 Results:** `{data['q']}`\n\n**Found {len(data['results'])} videos**\n\nDon't forget to visit @AviaxOfficial",
+                reply_markup=make_search_buttons(data['results'], uid, 0)
+            )
         await cb.answer()
     except:
         await cb.answer("Error")
@@ -331,7 +342,7 @@ async def page_cb(client: Client, cb: CallbackQuery):
 
 @app.on_callback_query(filters.regex(r'^(audio|video)_'))
 async def download_cb(client: Client, cb: CallbackQuery):
-    """Download handler"""
+    """Download handler - EDIT SAME MESSAGE"""
     parts = cb.data.split('_')
     
     if len(parts) == 3:  # audio_vid_uid
@@ -357,53 +368,80 @@ async def download_cb(client: Client, cb: CallbackQuery):
     
     await cb.answer(f"⏳ Downloading {quality}...")
     
-    msg = None
+    # Edit same message
     try:
-        msg = await cb.message.reply_text(f"⬇️ **Downloading...**\n\n`Please wait...`")
+        if cb.message.photo:
+            await cb.message.edit_caption(f"⬇️ **Downloading {quality} {fmt.upper()}...**\n\n`Please wait...`\n\nDon't forget to visit @AviaxOfficial")
+        else:
+            await cb.message.edit_text(f"⬇️ **Downloading {quality} {fmt.upper()}...**\n\n`Please wait...`\n\nDon't forget to visit @AviaxOfficial")
     except:
-        try:
-            msg = await cb.message.edit_text(f"⬇️ **Downloading...**\n\n`Please wait...`")
-        except:
-            pass
+        pass
     
     # Download
     try:
         file = await download_file(vid, is_video)
         
         if not file or not os.path.exists(file):
-            if msg:
-                try:
-                    await msg.edit_text("❌ **Download failed!**\n\n`Try again later`")
-                except:
-                    pass
-            return
-        
-        # Upload
-        if msg:
             try:
-                await msg.edit_text(f"⬆️ **Uploading...**\n\n`Almost done...`")
+                if cb.message.photo:
+                    await cb.message.edit_caption("❌ **Download failed!**\n\n`Try again later`\n\nDon't forget to visit @AviaxOfficial")
+                else:
+                    await cb.message.edit_text("❌ **Download failed!**\n\n`Try again later`\n\nDon't forget to visit @AviaxOfficial")
             except:
                 pass
+            return
+        
+        # Upload status
+        try:
+            if cb.message.photo:
+                await cb.message.edit_caption(f"⬆️ **Uploading {quality} {fmt.upper()}...**\n\n`Almost done...`\n\nDon't forget to visit @AviaxOfficial")
+            else:
+                await cb.message.edit_text(f"⬆️ **Uploading {quality} {fmt.upper()}...**\n\n`Almost done...`\n\nDon't forget to visit @AviaxOfficial")
+        except:
+            pass
         
         title = data['info'].get('title', 'Download')
         size = os.path.getsize(file)
         
         cap = (
-            f"**✅ Complete!**\n\n"
-            f"**🎵** `{title}`\n"
-            f"**📊** `{quality} {fmt.upper()}`\n"
-            f"**📦** `{format_size(size)}`"
+            f"**✅ Download Complete!**\n\n"
+            f"**🎵 Title:** `{title}`\n"
+            f"**📊 Quality:** `{quality} {fmt.upper()}`\n"
+            f"**📦 Size:** `{format_size(size)}`\n\n"
+            f"Don't forget to visit @AviaxOfficial"
         )
         
-        # Send file
-        if is_video:
-            await cb.message.reply_video(video=file, caption=cap, supports_streaming=True)
-        else:
-            await cb.message.reply_audio(audio=file, caption=cap, title=title)
-        
-        if msg:
+        # Delete inline message and send file as new message
+        try:
+            # Get chat info before deleting
+            chat_id = cb.message.chat.id
+            
+            # Delete the inline message
+            await cb.message.delete()
+            
+            # Send file as new message
+            if is_video:
+                await app.send_video(
+                    chat_id=chat_id,
+                    video=file,
+                    caption=cap,
+                    supports_streaming=True
+                )
+            else:
+                await app.send_audio(
+                    chat_id=chat_id,
+                    audio=file,
+                    caption=cap,
+                    title=title
+                )
+        except Exception as e:
+            print(f"Send error: {e}")
+            # Fallback: try to edit message with success
             try:
-                await msg.edit_text("✅ **Done!**")
+                if cb.message.photo:
+                    await cb.message.edit_caption(f"✅ **File ready but couldn't send!**\n\n`{str(e)[:100]}`\n\nDon't forget to visit @AviaxOfficial")
+                else:
+                    await cb.message.edit_text(f"✅ **File ready but couldn't send!**\n\n`{str(e)[:100]}`\n\nDon't forget to visit @AviaxOfficial")
             except:
                 pass
         
@@ -415,11 +453,13 @@ async def download_cb(client: Client, cb: CallbackQuery):
         
     except Exception as e:
         print(f"Error: {e}")
-        if msg:
-            try:
-                await msg.edit_text(f"❌ **Error!**\n\n`{str(e)[:100]}`")
-            except:
-                pass
+        try:
+            if cb.message.photo:
+                await cb.message.edit_caption(f"❌ **Error occurred!**\n\n`{str(e)[:100]}`\n\nDon't forget to visit @AviaxOfficial")
+            else:
+                await cb.message.edit_text(f"❌ **Error occurred!**\n\n`{str(e)[:100]}`\n\nDon't forget to visit @AviaxOfficial")
+        except:
+            pass
 
 @app.on_callback_query(filters.regex(r'^close_'))
 async def close_cb(client: Client, cb: CallbackQuery):
