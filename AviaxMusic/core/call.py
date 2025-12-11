@@ -6,11 +6,6 @@ from typing import Union
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
-from pytgcalls.exceptions import (
-    AlreadyJoined,
-    NoActiveCall,
-    GroupCallNotFound,
-)
 from pytgcalls.types import AudioQuality, VideoQuality
 from pytgcalls.types.stream import Stream, StreamAudioEnded
 
@@ -265,14 +260,14 @@ class Call(PyTgCalls):
         
         try:
             await assistant.play(chat_id, stream)
-        except NoActiveCall:
-            raise AssistantErr(_["call_8"])
-        except AlreadyJoined:
-            raise AssistantErr(_["call_9"])
-        except GroupCallNotFound:
-            raise AssistantErr(_["call_10"])
         except Exception as e:
-            raise AssistantErr(f"Error joining call: {e}")
+            error_msg = str(e).lower()
+            if "no active" in error_msg or "not found" in error_msg:
+                raise AssistantErr(_["call_8"])
+            elif "already" in error_msg or "joined" in error_msg:
+                raise AssistantErr(_["call_9"])
+            else:
+                raise AssistantErr(_["call_10"])
         
         await add_active_chat(chat_id)
         await music_on(chat_id)
