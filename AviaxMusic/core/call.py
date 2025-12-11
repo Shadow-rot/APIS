@@ -6,8 +6,8 @@ from typing import Union
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
-from pytgcalls.types import AudioQuality, VideoQuality
-from pytgcalls.types.stream import Stream, StreamAudioEnded
+from pytgcalls.types import AudioQuality, VideoQuality, Stream
+from pytgcalls.types.update import StreamAudioEnded
 
 import config
 from AviaxMusic import LOGGER, YouTube, app
