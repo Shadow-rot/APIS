@@ -1,8 +1,10 @@
 from typing import Union
 
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from pyrogram import filters
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 
 from AviaxMusic import app
+from AviaxMusic.utils.database import get_lang
 
 
 def help_pannel(_, START: Union[bool, int] = None, page: int = 1):
@@ -161,3 +163,24 @@ def private_help_panel(_):
         ],
     ]
     return buttons
+
+
+@app.on_callback_query(filters.regex("help_page"))
+async def help_page_callback(client, callback_query: CallbackQuery):
+    try:
+        from strings import get_string
+        
+        language = await get_lang(callback_query.from_user.id)
+        _ = get_string(language)
+        
+        page = int(callback_query.data.split()[1])
+        
+        keyboard = help_pannel(_, START=True, page=page)
+        
+        await callback_query.edit_message_reply_markup(
+            reply_markup=keyboard
+        )
+        await callback_query.answer()
+        
+    except Exception as e:
+        await callback_query.answer(f"Error: {e}", show_alert=True)
