@@ -12,7 +12,7 @@ numpy
 opencv-python
 pillow==9.5.0
 psutil
-py-tgcalls==2.1.0
+py-tgcalls
 tgcalls
 pytgcrypto
 kurigram
