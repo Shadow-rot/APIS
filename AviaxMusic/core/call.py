@@ -7,9 +7,9 @@ from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
 from pytgcalls.exceptions import (
-    AlreadyJoinedError,
-    NoActiveGroupCall,
-    TelegramServerError,
+    AlreadyJoined,
+    NoActiveCall,
+    GroupCallNotFound,
 )
 from pytgcalls.types import AudioQuality, VideoQuality
 from pytgcalls.types.stream import Stream, StreamAudioEnded
@@ -265,12 +265,14 @@ class Call(PyTgCalls):
         
         try:
             await assistant.play(chat_id, stream)
-        except NoActiveGroupCall:
+        except NoActiveCall:
             raise AssistantErr(_["call_8"])
-        except AlreadyJoinedError:
+        except AlreadyJoined:
             raise AssistantErr(_["call_9"])
-        except TelegramServerError:
+        except GroupCallNotFound:
             raise AssistantErr(_["call_10"])
+        except Exception as e:
+            raise AssistantErr(f"Error joining call: {e}")
         
         await add_active_chat(chat_id)
         await music_on(chat_id)
