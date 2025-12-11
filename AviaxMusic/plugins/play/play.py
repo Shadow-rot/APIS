@@ -109,7 +109,11 @@ async def play_commnd(
                 ex_type = type(e).__name__
                 err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
                 return await mystic.edit_text(err)
-            return await mystic.delete()
+            # Delete only after successful stream
+            try:
+                await mystic.delete()
+            except:
+                pass
         return
     elif video_telegram:
         if message.reply_to_message.document:
@@ -154,7 +158,11 @@ async def play_commnd(
                 ex_type = type(e).__name__
                 err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
                 return await mystic.edit_text(err)
-            return await mystic.delete()
+            # Delete only after successful stream
+            try:
+                await mystic.delete()
+            except:
+                pass
         return
     elif url:
         if await YouTube.exists(url):
@@ -290,7 +298,12 @@ async def play_commnd(
                 ex_type = type(e).__name__
                 err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
                 return await mystic.edit_text(err)
-            return await mystic.delete()
+            # Delete only after successful stream
+            try:
+                await mystic.delete()
+            except:
+                pass
+            return
         else:
             try:
                 await Aviax.stream_call(url)
@@ -339,6 +352,7 @@ async def play_commnd(
         except:
             return await mystic.edit_text(_["play_3"])
         streamtype = "youtube"
+    
     if str(playmode) == "Direct":
         if not plist_type:
             if details["duration_min"]:
@@ -379,7 +393,11 @@ async def play_commnd(
             ex_type = type(e).__name__
             err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
             return await mystic.edit_text(err)
-        await mystic.delete()
+        # Delete only after successful stream
+        try:
+            await mystic.delete()
+        except:
+            pass
         return await play_logs(message, streamtype=streamtype)
     else:
         if plist_type:
@@ -395,12 +413,16 @@ async def play_commnd(
                 "c" if channel else "g",
                 "f" if fplay else "d",
             )
-            await mystic.delete()
-            await message.reply_photo(
-                photo=img,
-                caption=cap,
-                reply_markup=InlineKeyboardMarkup(buttons),
-            )
+            # Edit message to photo instead of delete + reply
+            try:
+                await mystic.delete()
+                await message.reply_photo(
+                    photo=img,
+                    caption=cap,
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                )
+            except:
+                pass
             return await play_logs(message, streamtype=f"Playlist : {plist_type}")
         else:
             if slider:
@@ -413,15 +435,19 @@ async def play_commnd(
                     "c" if channel else "g",
                     "f" if fplay else "d",
                 )
-                await mystic.delete()
-                await message.reply_photo(
-                    photo=details["thumb"],
-                    caption=_["play_10"].format(
-                        details["title"].title(),
-                        details["duration_min"],
-                    ),
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                )
+                # Edit message to photo instead of delete + reply
+                try:
+                    await mystic.delete()
+                    await message.reply_photo(
+                        photo=details["thumb"],
+                        caption=_["play_10"].format(
+                            details["title"].title(),
+                            details["duration_min"],
+                        ),
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                    )
+                except:
+                    pass
                 return await play_logs(message, streamtype=f"Searched on Youtube")
             else:
                 buttons = track_markup(
@@ -431,12 +457,16 @@ async def play_commnd(
                     "c" if channel else "g",
                     "f" if fplay else "d",
                 )
-                await mystic.delete()
-                await message.reply_photo(
-                    photo=img,
-                    caption=cap,
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                )
+                # Edit message to photo instead of delete + reply
+                try:
+                    await mystic.delete()
+                    await message.reply_photo(
+                        photo=img,
+                        caption=cap,
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                    )
+                except:
+                    pass
                 return await play_logs(message, streamtype=f"URL Searched Inline")
 
 
@@ -456,18 +486,28 @@ async def play_music(client, CallbackQuery, _):
     except:
         return
     user_name = CallbackQuery.from_user.first_name
+    
+    # Edit existing message instead of delete + reply
     try:
-        await CallbackQuery.message.delete()
         await CallbackQuery.answer()
+        mystic = await CallbackQuery.message.edit_text(
+            _["play_2"].format(channel) if channel else _["play_1"]
+        )
     except:
-        pass
-    mystic = await CallbackQuery.message.reply_text(
-        _["play_2"].format(channel) if channel else _["play_1"]
-    )
+        # Fallback if edit fails
+        try:
+            await CallbackQuery.message.delete()
+        except:
+            pass
+        mystic = await CallbackQuery.message.reply_text(
+            _["play_2"].format(channel) if channel else _["play_1"]
+        )
+    
     try:
         details, track_id = await YouTube.track(vidid, True)
     except:
         return await mystic.edit_text(_["play_3"])
+    
     if details["duration_min"]:
         duration_sec = time_to_seconds(details["duration_min"])
         if duration_sec > config.DURATION_LIMIT:
@@ -487,6 +527,7 @@ async def play_music(client, CallbackQuery, _):
             _["play_13"],
             reply_markup=InlineKeyboardMarkup(buttons),
         )
+    
     video = True if mode == "v" else None
     ffplay = True if fplay == "f" else None
     try:
@@ -507,7 +548,12 @@ async def play_music(client, CallbackQuery, _):
         ex_type = type(e).__name__
         err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
         return await mystic.edit_text(err)
-    return await mystic.delete()
+    
+    # Delete only after successful stream
+    try:
+        await mystic.delete()
+    except:
+        pass
 
 
 @app.on_callback_query(filters.regex("AnonymousAdmin") & ~BANNED_USERS)
@@ -544,18 +590,25 @@ async def play_playlists_command(client, CallbackQuery, _):
     except:
         return
     user_name = CallbackQuery.from_user.first_name
-    await CallbackQuery.message.delete()
+    
+    # Edit existing message instead of delete + reply
     try:
         await CallbackQuery.answer()
+        mystic = await CallbackQuery.message.edit_text(
+            _["play_2"].format(channel) if channel else _["play_1"]
+        )
     except:
-        pass
-    mystic = await CallbackQuery.message.reply_text(
-        _["play_2"].format(channel) if channel else _["play_1"]
-    )
+        # Fallback if edit fails
+        await CallbackQuery.message.delete()
+        mystic = await CallbackQuery.message.reply_text(
+            _["play_2"].format(channel) if channel else _["play_1"]
+        )
+    
     videoid = lyrical.get(videoid)
     video = True if mode == "v" else None
     ffplay = True if fplay == "f" else None
     spotify = True
+    
     if ptype == "yt":
         spotify = False
         try:
@@ -587,6 +640,7 @@ async def play_playlists_command(client, CallbackQuery, _):
             result, apple_id = await Apple.playlist(videoid, True)
         except:
             return await mystic.edit_text(_["play_3"])
+    
     try:
         await stream(
             _,
@@ -606,7 +660,12 @@ async def play_playlists_command(client, CallbackQuery, _):
         ex_type = type(e).__name__
         err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
         return await mystic.edit_text(err)
-    return await mystic.delete()
+    
+    # Delete only after successful stream
+    try:
+        await mystic.delete()
+    except:
+        pass
 
 
 @app.on_callback_query(filters.regex("slider") & ~BANNED_USERS)
@@ -671,4 +730,3 @@ async def slider_queries(client, CallbackQuery, _):
         return await CallbackQuery.edit_message_media(
             media=med, reply_markup=InlineKeyboardMarkup(buttons)
         )
-
