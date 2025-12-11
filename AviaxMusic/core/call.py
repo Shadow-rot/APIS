@@ -6,6 +6,7 @@ from typing import Union
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
+from pytgcalls.types import MediaStream
 
 import config
 from AviaxMusic import LOGGER, YouTube, app
@@ -170,7 +171,7 @@ class Call(PyTgCalls):
         duration = seconds_to_min(dur)
         
         if str(db[chat_id][0]["file"]) == str(file_path):
-            await assistant.play(chat_id, out)
+            await assistant.play(chat_id, MediaStream(out))
         else:
             raise AssistantErr("Umm")
         if str(db[chat_id][0]["file"]) == str(file_path):
@@ -206,17 +207,15 @@ class Call(PyTgCalls):
         image: Union[bool, str] = None,
     ):
         assistant = await group_assistant(self, chat_id)
-        await assistant.play(chat_id, link)
+        await assistant.play(chat_id, MediaStream(link))
 
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
-        # For seeking, we need to use ffmpeg to create a new file starting from seek position
-        # or pass the seek parameter if the library supports it
-        await assistant.play(chat_id, file_path)
+        await assistant.play(chat_id, MediaStream(file_path))
 
     async def stream_call(self, link):
         assistant = await group_assistant(self, config.LOG_GROUP_ID)
-        await assistant.play(config.LOG_GROUP_ID, link)
+        await assistant.play(config.LOG_GROUP_ID, MediaStream(link))
         await asyncio.sleep(0.2)
         await assistant.leave_call(config.LOG_GROUP_ID)
 
@@ -233,7 +232,7 @@ class Call(PyTgCalls):
         _ = get_string(language)
         
         try:
-            await assistant.play(chat_id, link)
+            await assistant.play(chat_id, MediaStream(link))
         except Exception as e:
             error_msg = str(e).lower()
             if "no active" in error_msg or "not found" in error_msg:
@@ -300,7 +299,7 @@ class Call(PyTgCalls):
                     )
                 
                 try:
-                    await client.play(chat_id, link)
+                    await client.play(chat_id, MediaStream(link))
                 except Exception:
                     return await app.send_message(
                         original_chat_id,
@@ -337,7 +336,7 @@ class Call(PyTgCalls):
                     )
                 
                 try:
-                    await client.play(chat_id, file_path)
+                    await client.play(chat_id, MediaStream(file_path))
                 except:
                     return await app.send_message(
                         original_chat_id,
@@ -362,7 +361,7 @@ class Call(PyTgCalls):
                 
             elif "index_" in queued:
                 try:
-                    await client.play(chat_id, videoid)
+                    await client.play(chat_id, MediaStream(videoid))
                 except:
                     return await app.send_message(
                         original_chat_id,
@@ -380,7 +379,7 @@ class Call(PyTgCalls):
                 
             else:
                 try:
-                    await client.play(chat_id, queued)
+                    await client.play(chat_id, MediaStream(queued))
                 except:
                     return await app.send_message(
                         original_chat_id,
@@ -457,8 +456,7 @@ class Call(PyTgCalls):
             await self.five.start()
 
     async def decorators(self):
-        # In pytgcalls 2.x, decorators have been simplified or removed
-        # Only on_stream_end is commonly available
+        # In pytgcalls 2.x, only on_stream_end is commonly available
         
         @self.one.on_stream_end()
         async def stream_end_handler1(client, update):
