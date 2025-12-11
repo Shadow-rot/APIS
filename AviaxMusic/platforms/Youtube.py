@@ -20,7 +20,6 @@ from config import API_URL, VIDEO_API_URL, API_KEY
 
 
 def cookie_txt_file():
-    """Fallback: Load cookie file from cookies directory"""
     cookie_dir = f"{os.getcwd()}/cookies"
     if not os.path.exists(cookie_dir):
         return None
@@ -38,6 +37,7 @@ async def download_song(link: str):
     for ext in ["mp3", "m4a", "webm"]:
         file_path = f"{download_folder}/{video_id}.{ext}"
         if os.path.exists(file_path):
+            #print(f"File already exists: {file_path}")
             return file_path
         
     song_url = f"{API_URL}/song/{video_id}?api={API_KEY}"
@@ -68,6 +68,7 @@ async def download_song(link: str):
             print("⏱️ Max retries reached. Still downloading...")
             return None
     
+
         try:
             file_format = data.get("format", "mp3")
             file_extension = file_format.lower()
@@ -91,7 +92,6 @@ async def download_song(link: str):
             print(f"Error occurred while downloading song: {e}")
             return None
     return None
-
 
 async def download_video(link: str):
     video_id = link.split('v=')[-1].split('&')[0]
@@ -130,6 +130,7 @@ async def download_video(link: str):
             print("⏱️ Max retries reached. Still downloading...")
             return None
     
+
         try:
             file_format = data.get("format", "mp4")
             file_extension = file_format.lower()
@@ -154,34 +155,22 @@ async def download_video(link: str):
             return None
     return None
 
-
 async def check_file_size(link):
     async def get_format_info(link):
-        # Try browser cookies first (Method 4)
+        cookie_file = cookie_txt_file()
+        if not cookie_file:
+            print("No cookies found. Cannot check file size.")
+            return None
+            
         proc = await asyncio.create_subprocess_exec(
             "yt-dlp",
-            "--cookies-from-browser", "chrome",
+            "--cookies", cookie_file,
             "-J",
             link,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await proc.communicate()
-        
-        # Fallback to cookie file if browser method fails
-        if proc.returncode != 0:
-            cookie_file = cookie_txt_file()
-            if cookie_file:
-                proc = await asyncio.create_subprocess_exec(
-                    "yt-dlp",
-                    "--cookies", cookie_file,
-                    "-J",
-                    link,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await proc.communicate()
-        
         if proc.returncode != 0:
             print(f'Error:\n{stderr.decode()}')
             return None
@@ -206,7 +195,6 @@ async def check_file_size(link):
     total_size = parse_size(formats)
     return total_size
 
-
 async def shell_cmd(cmd):
     proc = await asyncio.create_subprocess_shell(
         cmd,
@@ -229,28 +217,6 @@ class YouTubeAPI:
         self.status = "https://www.youtube.com/oembed?url="
         self.listbase = "https://youtube.com/playlist?list="
         self.reg = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
-        # Detect available browser for Method 4
-        self.browser = self._detect_browser()
-
-    def _detect_browser(self):
-        """Auto-detect which browser to use for cookies"""
-        browsers = ['chrome', 'firefox', 'edge', 'brave', 'opera', 'chromium']
-        for browser in browsers:
-            try:
-                # Quick test if browser profile exists
-                import subprocess
-                result = subprocess.run(
-                    ['yt-dlp', '--cookies-from-browser', browser, '--version'],
-                    capture_output=True,
-                    timeout=2
-                )
-                if result.returncode == 0:
-                    print(f"✓ Using browser cookies from: {browser}")
-                    return browser
-            except:
-                continue
-        print("⚠️ No browser detected, falling back to cookie files")
-        return None
 
     async def exists(self, link: str, videoid: Union[bool, str] = None):
         if videoid:
@@ -345,26 +311,10 @@ class YouTubeAPI:
         except Exception as e:
             print(f"Video API failed: {e}")
         
-        # Method 4: Browser cookies first
-        if self.browser:
-            proc = await asyncio.create_subprocess_exec(
-                "yt-dlp",
-                "--cookies-from-browser", self.browser,
-                "-g",
-                "-f",
-                "best[height<=?720][width<=?1280]",
-                f"{link}",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await proc.communicate()
-            if stdout:
-                return 1, stdout.decode().split("\n")[0]
-        
-        # Fallback to cookie file
+        # Fallback to cookies
         cookie_file = cookie_txt_file()
         if not cookie_file:
-            return 0, "No cookies available. Cannot download video."
+            return 0, "No cookies found. Cannot download video."
             
         proc = await asyncio.create_subprocess_exec(
             "yt-dlp",
@@ -388,20 +338,6 @@ class YouTubeAPI:
         if "&" in link:
             link = link.split("&")[0]
         
-        # Method 4: Try browser cookies first
-        if self.browser:
-            playlist = await shell_cmd(
-                f"yt-dlp -i --get-id --flat-playlist --cookies-from-browser {self.browser} --playlist-end {limit} --skip-download {link}"
-            )
-            if playlist and "ERROR" not in playlist.upper():
-                try:
-                    result = playlist.split("\n")
-                    result = [key for key in result if key]
-                    return result
-                except:
-                    pass
-        
-        # Fallback to cookie file
         cookie_file = cookie_txt_file()
         if not cookie_file:
             return []
@@ -411,7 +347,9 @@ class YouTubeAPI:
         )
         try:
             result = playlist.split("\n")
-            result = [key for key in result if key]
+            for key in result:
+                if key == "":
+                    result.remove(key)
         except:
             result = []
         return result
@@ -443,17 +381,11 @@ class YouTubeAPI:
         if "&" in link:
             link = link.split("&")[0]
         
-        # Method 4: Browser cookies first
-        ytdl_opts = {"quiet": True}
-        if self.browser:
-            ytdl_opts["cookiesfrombrowser"] = (self.browser,)
-        else:
-            cookie_file = cookie_txt_file()
-            if cookie_file:
-                ytdl_opts["cookiefile"] = cookie_file
-            else:
-                return [], link
-        
+        cookie_file = cookie_txt_file()
+        if not cookie_file:
+            return [], link
+            
+        ytdl_opts = {"quiet": True, "cookiefile" : cookie_file}
         ydl = yt_dlp.YoutubeDL(ytdl_opts)
         with ydl:
             formats_available = []
@@ -516,27 +448,20 @@ class YouTubeAPI:
         if videoid:
             link = self.base + link
         loop = asyncio.get_running_loop()
-        
         def audio_dl():
-            # Method 4: Browser cookies first
+            cookie_file = cookie_txt_file()
+            if not cookie_file:
+                raise Exception("No cookies found. Cannot download audio.")
+                
             ydl_optssx = {
                 "format": "bestaudio/best",
                 "outtmpl": "downloads/%(id)s.%(ext)s",
                 "geo_bypass": True,
                 "nocheckcertificate": True,
                 "quiet": True,
+                "cookiefile" : cookie_file,
                 "no_warnings": True,
             }
-            
-            if self.browser:
-                ydl_optssx["cookiesfrombrowser"] = (self.browser,)
-            else:
-                cookie_file = cookie_txt_file()
-                if cookie_file:
-                    ydl_optssx["cookiefile"] = cookie_file
-                else:
-                    raise Exception("No cookies available.")
-            
             x = yt_dlp.YoutubeDL(ydl_optssx)
             info = x.extract_info(link, False)
             xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
@@ -546,25 +471,19 @@ class YouTubeAPI:
             return xyz
 
         def video_dl():
-            # Method 4: Browser cookies first
+            cookie_file = cookie_txt_file()
+            if not cookie_file:
+                raise Exception("No cookies found. Cannot download video.")
+                
             ydl_optssx = {
                 "format": "(bestvideo[height<=?720][width<=?1280][ext=mp4])+(bestaudio[ext=m4a])",
                 "outtmpl": "downloads/%(id)s.%(ext)s",
                 "geo_bypass": True,
                 "nocheckcertificate": True,
                 "quiet": True,
+                "cookiefile" : cookie_file,
                 "no_warnings": True,
             }
-            
-            if self.browser:
-                ydl_optssx["cookiesfrombrowser"] = (self.browser,)
-            else:
-                cookie_file = cookie_txt_file()
-                if cookie_file:
-                    ydl_optssx["cookiefile"] = cookie_file
-                else:
-                    raise Exception("No cookies available.")
-            
             x = yt_dlp.YoutubeDL(ydl_optssx)
             info = x.extract_info(link, False)
             xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
@@ -574,6 +493,10 @@ class YouTubeAPI:
             return xyz
 
         def song_video_dl():
+            cookie_file = cookie_txt_file()
+            if not cookie_file:
+                raise Exception("No cookies found. Cannot download song video.")
+                
             formats = f"{format_id}+140"
             fpath = f"downloads/{title}"
             ydl_optssx = {
@@ -583,23 +506,18 @@ class YouTubeAPI:
                 "nocheckcertificate": True,
                 "quiet": True,
                 "no_warnings": True,
+                "cookiefile" : cookie_file,
                 "prefer_ffmpeg": True,
                 "merge_output_format": "mp4",
             }
-            
-            if self.browser:
-                ydl_optssx["cookiesfrombrowser"] = (self.browser,)
-            else:
-                cookie_file = cookie_txt_file()
-                if cookie_file:
-                    ydl_optssx["cookiefile"] = cookie_file
-                else:
-                    raise Exception("No cookies available.")
-            
             x = yt_dlp.YoutubeDL(ydl_optssx)
             x.download([link])
 
         def song_audio_dl():
+            cookie_file = cookie_txt_file()
+            if not cookie_file:
+                raise Exception("No cookies found. Cannot download song audio.")
+                
             fpath = f"downloads/{title}.%(ext)s"
             ydl_optssx = {
                 "format": format_id,
@@ -608,6 +526,7 @@ class YouTubeAPI:
                 "nocheckcertificate": True,
                 "quiet": True,
                 "no_warnings": True,
+                "cookiefile" : cookie_file,
                 "prefer_ffmpeg": True,
                 "postprocessors": [
                     {
@@ -617,26 +536,16 @@ class YouTubeAPI:
                     }
                 ],
             }
-            
-            if self.browser:
-                ydl_optssx["cookiesfrombrowser"] = (self.browser,)
-            else:
-                cookie_file = cookie_txt_file()
-                if cookie_file:
-                    ydl_optssx["cookiefile"] = cookie_file
-                else:
-                    raise Exception("No cookies available.")
-            
             x = yt_dlp.YoutubeDL(ydl_optssx)
             x.download([link])
 
         if songvideo:
-            await loop.run_in_executor(None, song_video_dl)
-            fpath = f"downloads/{title}.mp4"
+            await download_song(link)
+            fpath = f"downloads/{link}.mp3"
             return fpath
         elif songaudio:
-            await loop.run_in_executor(None, song_audio_dl)
-            fpath = f"downloads/{title}.mp3"
+            await download_song(link)
+            fpath = f"downloads/{link}.mp3"
             return fpath
         elif video:
             # Try video API first
@@ -648,27 +557,23 @@ class YouTubeAPI:
             except Exception as e:
                 print(f"Video API failed: {e}")
             
-            # Method 4 or cookie file fallback
+            # Fallback to cookies
+            cookie_file = cookie_txt_file()
+            if not cookie_file:
+                print("No cookies found. Cannot download video.")
+                return None, None
+                
             if await is_on_off(1):
                 direct = True
-                downloaded_file = await loop.run_in_executor(None, video_dl)
+                downloaded_file = await download_song(link)
             else:
-                # Stream URL method
-                cmd_parts = ["yt-dlp"]
-                if self.browser:
-                    cmd_parts.extend(["--cookies-from-browser", self.browser])
-                else:
-                    cookie_file = cookie_txt_file()
-                    if cookie_file:
-                        cmd_parts.extend(["--cookies", cookie_file])
-                    else:
-                        print("No cookies available.")
-                        return None, None
-                
-                cmd_parts.extend(["-g", "-f", "best[height<=?720][width<=?1280]", link])
-                
                 proc = await asyncio.create_subprocess_exec(
-                    *cmd_parts,
+                    "yt-dlp",
+                    "--cookies", cookie_file,
+                    "-g",
+                    "-f",
+                    "best[height<=?720][width<=?1280]",
+                    f"{link}",
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -677,18 +582,17 @@ class YouTubeAPI:
                     downloaded_file = stdout.decode().split("\n")[0]
                     direct = False
                 else:
-                    file_size = await check_file_size(link)
-                    if not file_size:
-                        print("None file Size")
-                        return None, None
-                    total_size_mb = file_size / (1024 * 1024)
-                    if total_size_mb > 250:
-                        print(f"File size {total_size_mb:.2f} MB exceeds the 250MB limit.")
-                        return None, None
-                    direct = True
-                    downloaded_file = await loop.run_in_executor(None, video_dl)
+                   file_size = await check_file_size(link)
+                   if not file_size:
+                     print("None file Size")
+                     return None, None
+                   total_size_mb = file_size / (1024 * 1024)
+                   if total_size_mb > 250:
+                     print(f"File size {total_size_mb:.2f} MB exceeds the 100MB limit.")
+                     return None, None
+                   direct = True
+                   downloaded_file = await loop.run_in_executor(None, video_dl)
         else:
             direct = True
-            downloaded_file = await loop.run_in_executor(None, audio_dl)
-        
+            downloaded_file = await download_song(link)
         return downloaded_file, direct
