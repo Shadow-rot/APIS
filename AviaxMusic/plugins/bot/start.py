@@ -58,7 +58,7 @@ async def start_pm(client, message: Message, _):
     if not is_subscribed:
         await message.reply_photo(
             photo=config.START_IMG_URL,
-            caption=f"**🔒 Access Denied**\n\nYou must join our channel to use this bot.\n\n👉 Join @{FORCE_SUB_CHANNEL}\n\nThen click **Try Again** button below.",
+            caption=f"🔒 Access Denied\n\nYou must join our channel to use this bot and get the repo of this bot.\n\n👉 Join @{FORCE_SUB_CHANNEL}\n\nThen click Try Again button below.",
             reply_markup=force_sub_keyboard()
         )
         return
