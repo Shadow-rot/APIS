@@ -6,7 +6,6 @@ from typing import Union
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
-from pytgcalls.types import MediaStream
 
 import config
 from AviaxMusic import LOGGER, YouTube, app
@@ -171,7 +170,7 @@ class Call(PyTgCalls):
         duration = seconds_to_min(dur)
         
         if str(db[chat_id][0]["file"]) == str(file_path):
-            await assistant.play(chat_id, MediaStream(out))
+            await assistant.play(chat_id, out)
         else:
             raise AssistantErr("Umm")
         if str(db[chat_id][0]["file"]) == str(file_path):
@@ -207,15 +206,15 @@ class Call(PyTgCalls):
         image: Union[bool, str] = None,
     ):
         assistant = await group_assistant(self, chat_id)
-        await assistant.play(chat_id, MediaStream(link))
+        await assistant.play(chat_id, link)
 
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
-        await assistant.play(chat_id, MediaStream(file_path))
+        await assistant.play(chat_id, file_path)
 
     async def stream_call(self, link):
         assistant = await group_assistant(self, config.LOG_GROUP_ID)
-        await assistant.play(config.LOG_GROUP_ID, MediaStream(link))
+        await assistant.play(config.LOG_GROUP_ID, link)
         await asyncio.sleep(0.2)
         await assistant.leave_call(config.LOG_GROUP_ID)
 
@@ -232,7 +231,7 @@ class Call(PyTgCalls):
         _ = get_string(language)
         
         try:
-            await assistant.play(chat_id, MediaStream(link))
+            await assistant.play(chat_id, link)
         except Exception as e:
             error_msg = str(e).lower()
             if "no active" in error_msg or "not found" in error_msg:
@@ -299,7 +298,7 @@ class Call(PyTgCalls):
                     )
                 
                 try:
-                    await client.play(chat_id, MediaStream(link))
+                    await client.play(chat_id, link)
                 except Exception:
                     return await app.send_message(
                         original_chat_id,
@@ -336,7 +335,7 @@ class Call(PyTgCalls):
                     )
                 
                 try:
-                    await client.play(chat_id, MediaStream(file_path))
+                    await client.play(chat_id, file_path)
                 except:
                     return await app.send_message(
                         original_chat_id,
@@ -361,7 +360,7 @@ class Call(PyTgCalls):
                 
             elif "index_" in queued:
                 try:
-                    await client.play(chat_id, MediaStream(videoid))
+                    await client.play(chat_id, videoid)
                 except:
                     return await app.send_message(
                         original_chat_id,
@@ -379,7 +378,7 @@ class Call(PyTgCalls):
                 
             else:
                 try:
-                    await client.play(chat_id, MediaStream(queued))
+                    await client.play(chat_id, queued)
                 except:
                     return await app.send_message(
                         original_chat_id,
@@ -456,27 +455,10 @@ class Call(PyTgCalls):
             await self.five.start()
 
     async def decorators(self):
-        # In pytgcalls 2.x, only on_stream_end is commonly available
-        
-        @self.one.on_stream_end()
-        async def stream_end_handler1(client, update):
-            await self.change_stream(client, update.chat_id)
-        
-        @self.two.on_stream_end()
-        async def stream_end_handler2(client, update):
-            await self.change_stream(client, update.chat_id)
-        
-        @self.three.on_stream_end()
-        async def stream_end_handler3(client, update):
-            await self.change_stream(client, update.chat_id)
-        
-        @self.four.on_stream_end()
-        async def stream_end_handler4(client, update):
-            await self.change_stream(client, update.chat_id)
-        
-        @self.five.on_stream_end()
-        async def stream_end_handler5(client, update):
-            await self.change_stream(client, update.chat_id)
+        # pytgcalls 2.x does not support decorators
+        # Event handling must be done through polling or external mechanisms
+        # Auto-next functionality should be handled in your queue management
+        pass
 
 
 Aviax = Call()
