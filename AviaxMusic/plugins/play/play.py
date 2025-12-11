@@ -3,7 +3,6 @@ import string
 
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, InputMediaPhoto, Message
-from pytgcalls.exceptions import NoActiveGroupCall
 
 import config
 from AviaxMusic import Apple, Resso, SoundCloud, Spotify, Telegram, YouTube, app
@@ -307,15 +306,17 @@ async def play_commnd(
         else:
             try:
                 await Aviax.stream_call(url)
-            except NoActiveGroupCall:
-                await mystic.edit_text(_["black_9"])
-                return await app.send_message(
-                    chat_id=config.LOG_GROUP_ID,
-                    text=_["play_17"],
-                )
             except Exception as e:
-                print(f"Error: {e}")
-                return await mystic.edit_text(_["general_2"].format(type(e).__name__))
+                error_msg = str(e).lower()
+                if "no active" in error_msg or "not found" in error_msg:
+                    await mystic.edit_text(_["black_9"])
+                    return await app.send_message(
+                        chat_id=config.LOG_GROUP_ID,
+                        text=_["play_17"],
+                    )
+                else:
+                    print(f"Error: {e}")
+                    return await mystic.edit_text(_["general_2"].format(type(e).__name__))
             await mystic.edit_text(_["str_2"])
             try:
                 await stream(
@@ -352,7 +353,7 @@ async def play_commnd(
         except:
             return await mystic.edit_text(_["play_3"])
         streamtype = "youtube"
-    
+
     if str(playmode) == "Direct":
         if not plist_type:
             if details["duration_min"]:
@@ -486,7 +487,7 @@ async def play_music(client, CallbackQuery, _):
     except:
         return
     user_name = CallbackQuery.from_user.first_name
-    
+
     # Edit existing message instead of delete + reply
     try:
         await CallbackQuery.answer()
@@ -502,12 +503,12 @@ async def play_music(client, CallbackQuery, _):
         mystic = await CallbackQuery.message.reply_text(
             _["play_2"].format(channel) if channel else _["play_1"]
         )
-    
+
     try:
         details, track_id = await YouTube.track(vidid, True)
     except:
         return await mystic.edit_text(_["play_3"])
-    
+
     if details["duration_min"]:
         duration_sec = time_to_seconds(details["duration_min"])
         if duration_sec > config.DURATION_LIMIT:
@@ -527,7 +528,7 @@ async def play_music(client, CallbackQuery, _):
             _["play_13"],
             reply_markup=InlineKeyboardMarkup(buttons),
         )
-    
+
     video = True if mode == "v" else None
     ffplay = True if fplay == "f" else None
     try:
@@ -548,7 +549,7 @@ async def play_music(client, CallbackQuery, _):
         ex_type = type(e).__name__
         err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
         return await mystic.edit_text(err)
-    
+
     # Delete only after successful stream
     try:
         await mystic.delete()
@@ -590,7 +591,7 @@ async def play_playlists_command(client, CallbackQuery, _):
     except:
         return
     user_name = CallbackQuery.from_user.first_name
-    
+
     # Edit existing message instead of delete + reply
     try:
         await CallbackQuery.answer()
@@ -603,12 +604,12 @@ async def play_playlists_command(client, CallbackQuery, _):
         mystic = await CallbackQuery.message.reply_text(
             _["play_2"].format(channel) if channel else _["play_1"]
         )
-    
+
     videoid = lyrical.get(videoid)
     video = True if mode == "v" else None
     ffplay = True if fplay == "f" else None
     spotify = True
-    
+
     if ptype == "yt":
         spotify = False
         try:
@@ -640,7 +641,7 @@ async def play_playlists_command(client, CallbackQuery, _):
             result, apple_id = await Apple.playlist(videoid, True)
         except:
             return await mystic.edit_text(_["play_3"])
-    
+
     try:
         await stream(
             _,
@@ -660,7 +661,7 @@ async def play_playlists_command(client, CallbackQuery, _):
         ex_type = type(e).__name__
         err = e if ex_type == "AssistantErr" else _["general_2"].format(ex_type)
         return await mystic.edit_text(err)
-    
+
     # Delete only after successful stream
     try:
         await mystic.delete()
