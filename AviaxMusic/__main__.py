@@ -2,6 +2,7 @@ import asyncio
 import importlib
 
 from pyrogram import idle
+from pytgcalls.exceptions import NoActiveGroupCall
 
 import config
 from AviaxMusic import LOGGER, app, userbot
@@ -40,16 +41,13 @@ async def init():
     await Aviax.start()
     try:
         await Aviax.stream_call("https://te.legra.ph/file/29f784eb49d230ab62e9e.mp4")
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "no active" in error_msg or "not found" in error_msg:
-            LOGGER("AviaxMusic").error(
-                "Please turn on the videochat of your log group\channel.\n\nStopping Bot..."
-            )
-            exit()
-        else:
-            # Other errors can be ignored
-            pass
+    except NoActiveGroupCall:
+        LOGGER("AviaxMusic").error(
+            "Please turn on the videochat of your log group\channel.\n\nStopping Bot..."
+        )
+        exit()
+    except:
+        pass
     await Aviax.decorators()
     LOGGER("AviaxMusic").info(
         "\x41\x76\x69\x61\x78\x20\x4d\x75\x73\x69\x63\x20\x53\x74\x61\x72\x74\x65\x64\x20\x53\x75\x63\x63\x65\x73\x73\x66\x75\x6c\x6c\x79\x2e\x0a\x0a\x44\x6f\x6e\x27\x74\x20\x66\x6f\x72\x67\x65\x74\x20\x74\x6f\x20\x76\x69\x73\x69\x74\x20\x40\x41\x76\x69\x61\x78\x4f\x66\x66\x69\x63\x69\x61\x6c"
