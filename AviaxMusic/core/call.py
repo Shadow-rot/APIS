@@ -6,7 +6,7 @@ from typing import Union
 from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
-from pytgcalls.types import MediaStream, AudioQuality, VideoQuality
+from pytgcalls.types import MediaStream, AudioQuality, VideoQuality, StreamAudioEnded, StreamVideoEnded
 from pytgcalls.exceptions import NoActiveGroupCall
 
 import config
@@ -304,7 +304,7 @@ class Call:
                 try:
                     await app.send_message(
                         chat_id,
-                        _["queue_ended"] if "queue_ended" in _ else "✅ Queue ended. Leaving voice chat..."
+                        "✅ Queue ended. Leaving voice chat..."
                     )
                 except Exception as e:
                     LOGGER(__name__).error(f"Error sending queue end message: {e}")
@@ -572,21 +572,48 @@ class Call:
 
     async def decorators(self):
         """
-        PyTgCalls 2.x uses different event handling.
-        Register stream_end handlers for automatic call management.
+        Register stream end handlers for PyTgCalls 2.x
+        These handlers will automatically be called when streams end
         """
-        async def on_stream_end(client, update):
+        async def stream_end_handler(client, update):
+            """Handler for when a stream ends"""
             chat_id = update.chat_id
-            LOGGER(__name__).info(f"Stream ended in chat {chat_id}")
+            LOGGER(__name__).info(f"Stream ended in chat {chat_id}, processing next song or leaving...")
             await self.change_stream(client, chat_id)
-
-        # Register the stream_end handler for all active clients
-        for client in [self.one, self.two, self.three, self.four, self.five]:
+        
+        # Register handlers for all clients
+        clients = [
+            (self.one, "Assistant 1"),
+            (self.two, "Assistant 2"),
+            (self.three, "Assistant 3"),
+            (self.four, "Assistant 4"),
+            (self.five, "Assistant 5"),
+        ]
+        
+        for client, name in clients:
             if client:
                 try:
-                    client.on_stream_end()(on_stream_end)
+                    # Register both audio and video stream end handlers
+                    @client.on_stream_end()
+                    async def on_closed_voice_chat(c, update):
+                        await stream_end_handler(c, update)
+                    
+                    LOGGER(__name__).info(f"Stream end handler registered for {name}")
+                except AttributeError:
+                    # If on_stream_end doesn't exist, try alternative methods
+                    try:
+                        # Try using add_handler with StreamAudioEnded
+                        from pytgcalls import filters
+                        
+                        @client.on_update(filters.stream_end)
+                        async def on_stream_end(c, update):
+                            await stream_end_handler(c, update)
+                        
+                        LOGGER(__name__).info(f"Alternative stream end handler registered for {name}")
+                    except Exception as e:
+                        LOGGER(__name__).warning(f"Could not register stream end handler for {name}: {e}")
                 except Exception as e:
-                    LOGGER(__name__).error(f"Error registering stream_end handler: {e}")
+                    LOGGER(__name__).error(f"Error registering handler for {name}: {e}")
 
 
 Aviax = Call()
