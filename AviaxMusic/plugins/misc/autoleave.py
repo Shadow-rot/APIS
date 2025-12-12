@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from pyrogram.enums import ChatType
+from pytgcalls.exceptions import GroupCallNotFound
 import config
 from AviaxMusic import app
 from AviaxMusic.misc import db
@@ -26,9 +27,7 @@ async def auto_leave():
                     ]:
                         if (
                             i.chat.id != config.LOG_GROUP_ID
-                            and i.chat.id != -1002016928980 
-                            and i.chat.id != -1002200386150 
-                            and i.chat.id != -1001397779415
+                            and i.chat.id != -1002016928980 and i.chat.id != -1002200386150 and i.chat.id != -1001397779415
                         ):
                             if left == 20:
                                 continue
@@ -57,19 +56,12 @@ async def auto_end():
             nocall = False
             for chat_id in chatss:
                 try:
-                    # In pytgcalls 2.x, use get_participants instead of call_listeners
-                    assistant = await Aviax.group_assistant(Aviax, chat_id)
-                    participants = await assistant.get_participants(chat_id)
-                    users = len(participants) if participants else 1
-                except Exception as e:
-                    # If there's an error getting participants, assume no active call
-                    error_msg = str(e).lower()
-                    if "not found" in error_msg or "no active" in error_msg:
-                        users = 1
-                        nocall = True
-                    else:
-                        users = 100
-                
+                    users = len(await Aviax.call_listeners(chat_id))
+                except GroupCallNotFound:
+                    users = 1
+                    nocall = True
+                except Exception:
+                    users = 100
                 timer = autoend.get(chat_id)
                 if users == 1:
                     res = await set_loop(chat_id, 0)
@@ -84,10 +76,7 @@ async def auto_end():
                         pass
                     try:
                         if not nocall:
-                            await app.send_message(
-                                chat_id, 
-                                "» ʙᴏᴛ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ʟᴇғᴛ ᴠɪᴅᴇᴏᴄʜᴀᴛ ʙᴇᴄᴀᴜsᴇ ɴᴏ ᴏɴᴇ ᴡᴀs ʟɪsᴛᴇɴɪɴɢ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ."
-                            )
+                            await app.send_message(chat_id, "» ʙᴏᴛ ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ ʟᴇғᴛ ᴠɪᴅᴇᴏᴄʜᴀᴛ ʙᴇᴄᴀᴜsᴇ ɴᴏ ᴏɴᴇ ᴡᴀs ʟɪsᴛᴇɴɪɴɢ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ.")
                     except Exception:
                         pass
             for chat_id in keys_to_remove:
