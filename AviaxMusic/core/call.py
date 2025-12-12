@@ -7,6 +7,7 @@ from pyrogram import Client
 from pyrogram.types import InlineKeyboardMarkup
 from pytgcalls import PyTgCalls
 from pytgcalls.types import MediaStream, AudioQuality, VideoQuality
+from pytgcalls.exceptions import NoActiveGroupCall
 
 import config
 from AviaxMusic import LOGGER, YouTube, app
@@ -49,28 +50,28 @@ class Call:
             api_hash=config.API_HASH,
             session_string=str(config.STRING1),
         ) if config.STRING1 else None
-        
+
         self.userbot2 = Client(
             name="AviaxAss2",
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             session_string=str(config.STRING2),
         ) if config.STRING2 else None
-        
+
         self.userbot3 = Client(
             name="AviaxAss3",
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             session_string=str(config.STRING3),
         ) if config.STRING3 else None
-        
+
         self.userbot4 = Client(
             name="AviaxAss4",
             api_id=config.API_ID,
             api_hash=config.API_HASH,
             session_string=str(config.STRING4),
         ) if config.STRING4 else None
-        
+
         self.userbot5 = Client(
             name="AviaxAss5",
             api_id=config.API_ID,
@@ -109,7 +110,7 @@ class Call:
                     await assistant.leave_call(chat_id)
                 except Exception as e:
                     LOGGER(__name__).error(f"Error in force stop: {e}")
-        
+
         try:
             await _clear_(chat_id)
         except Exception as e:
@@ -117,14 +118,14 @@ class Call:
 
     async def speedup_stream(self, chat_id: int, file_path, speed, playing):
         assistant = await group_assistant(self, chat_id)
-        
+
         if str(speed) != "1.0":
             base = os.path.basename(file_path)
             chatdir = os.path.join(os.getcwd(), "playback", str(speed))
             if not os.path.isdir(chatdir):
                 os.makedirs(chatdir)
             out = os.path.join(chatdir, base)
-            
+
             if not os.path.isfile(out):
                 # Speed conversion mapping
                 speed_map = {
@@ -134,7 +135,7 @@ class Call:
                     "2.0": 0.5
                 }
                 vs = speed_map.get(str(speed), 1.0)
-                
+
                 proc = await asyncio.create_subprocess_shell(
                     cmd=(
                         f"ffmpeg -i {file_path} "
@@ -148,21 +149,20 @@ class Call:
                 await proc.communicate()
         else:
             out = file_path
-        
+
         dur = await asyncio.get_event_loop().run_in_executor(None, check_duration, out)
         dur = int(dur)
         played, con_seconds = speed_converter(playing[0]["played"], speed)
         duration = seconds_to_min(dur)
-        
+
         if str(db[chat_id][0]["file"]) == str(file_path):
-            # Use play method with MediaStream for PyTgCalls 2.x
             await assistant.play(
                 chat_id,
                 MediaStream(out)
             )
         else:
             raise AssistantErr("Umm")
-        
+
         if str(db[chat_id][0]["file"]) == str(file_path):
             exis = (playing[0]).get("old_dur")
             if not exis:
@@ -182,10 +182,10 @@ class Call:
                 check.pop(0)
         except Exception as e:
             LOGGER(__name__).error(f"Error in force_stop_stream: {e}")
-        
+
         await remove_active_video_chat(chat_id)
         await remove_active_chat(chat_id)
-        
+
         try:
             await assistant.leave_call(chat_id)
         except Exception as e:
@@ -199,7 +199,7 @@ class Call:
         image: Union[bool, str] = None,
     ):
         assistant = await group_assistant(self, chat_id)
-        
+
         if video:
             await assistant.play(
                 chat_id,
@@ -216,7 +216,6 @@ class Call:
 
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
-        # PyTgCalls 2.x doesn't have built-in seek, need to restart with offset
         await assistant.play(
             chat_id,
             MediaStream(file_path)
@@ -242,7 +241,7 @@ class Call:
         assistant = await group_assistant(self, chat_id)
         language = await get_lang(chat_id)
         _ = get_string(language)
-        
+
         try:
             if video:
                 await assistant.play(
@@ -266,13 +265,13 @@ class Call:
                 raise AssistantErr(_["call_9"])
             else:
                 raise AssistantErr(_["call_10"])
-        
+
         await add_active_chat(chat_id)
         await music_on(chat_id)
-        
+
         if video:
             await add_active_video_chat(chat_id)
-        
+
         if await is_autoend():
             counter[chat_id] = {}
             try:
@@ -286,26 +285,54 @@ class Call:
         check = db.get(chat_id)
         popped = None
         loop = await get_loop(chat_id)
-        
+
         try:
             if loop == 0:
                 popped = check.pop(0)
             else:
                 loop = loop - 1
                 await set_loop(chat_id, loop)
-            
+
             await auto_clean(popped)
-            
+
+            # Check if queue is empty - if so, leave the call
             if not check:
+                language = await get_lang(chat_id)
+                _ = get_string(language)
+                
+                # Send notification that playback has ended
+                try:
+                    await app.send_message(
+                        chat_id,
+                        _["queue_ended"] if "queue_ended" in _ else "✅ Queue ended. Leaving voice chat..."
+                    )
+                except Exception as e:
+                    LOGGER(__name__).error(f"Error sending queue end message: {e}")
+                
+                # Clear all data and leave the call
                 await _clear_(chat_id)
-                return await client.leave_call(chat_id)
+                
+                try:
+                    await client.leave_call(chat_id)
+                    LOGGER(__name__).info(f"Successfully left voice chat {chat_id} after queue ended")
+                except NoActiveGroupCall:
+                    LOGGER(__name__).warning(f"No active call in {chat_id} to leave")
+                except Exception as e:
+                    LOGGER(__name__).error(f"Error leaving call {chat_id}: {e}")
+                
+                return
+                
         except Exception as e:
             LOGGER(__name__).error(f"Error in change_stream: {e}")
             try:
                 await _clear_(chat_id)
-                return await client.leave_call(chat_id)
+                try:
+                    await client.leave_call(chat_id)
+                except:
+                    pass
             except:
-                return
+                pass
+            return
         else:
             queued = check[0]["file"]
             language = await get_lang(chat_id)
@@ -316,16 +343,16 @@ class Call:
             streamtype = check[0]["streamtype"]
             videoid = check[0]["vidid"]
             db[chat_id][0]["played"] = 0
-            
+
             exis = (check[0]).get("old_dur")
             if exis:
                 db[chat_id][0]["dur"] = exis
                 db[chat_id][0]["seconds"] = check[0]["old_second"]
                 db[chat_id][0]["speed_path"] = None
                 db[chat_id][0]["speed"] = 1.0
-            
+
             video = True if str(streamtype) == "video" else False
-            
+
             if "live_" in queued:
                 n, link = await YouTube.video(videoid, True)
                 if n == 0:
@@ -333,7 +360,7 @@ class Call:
                         original_chat_id,
                         text=_["call_6"],
                     )
-                
+
                 try:
                     if video:
                         await client.play(
@@ -350,7 +377,7 @@ class Call:
                         original_chat_id,
                         text=_["call_6"],
                     )
-                
+
                 img = await gen_thumb(videoid)
                 button = stream_markup(_, chat_id)
                 run = await app.send_photo(
@@ -366,7 +393,7 @@ class Call:
                 )
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
-                
+
             elif "vid_" in queued:
                 mystic = await app.send_message(original_chat_id, _["call_7"])
                 try:
@@ -380,7 +407,7 @@ class Call:
                     return await mystic.edit_text(
                         _["call_6"], disable_web_page_preview=True
                     )
-                
+
                 try:
                     if video:
                         await client.play(
@@ -397,7 +424,7 @@ class Call:
                         original_chat_id,
                         text=_["call_6"],
                     )
-                
+
                 img = await gen_thumb(videoid)
                 button = stream_markup(_, chat_id)
                 await mystic.delete()
@@ -414,7 +441,7 @@ class Call:
                 )
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "stream"
-                
+
             elif "index_" in queued:
                 try:
                     await client.play(chat_id, MediaStream(videoid))
@@ -423,7 +450,7 @@ class Call:
                         original_chat_id,
                         text=_["call_6"],
                     )
-                
+
                 button = stream_markup(_, chat_id)
                 run = await app.send_photo(
                     chat_id=original_chat_id,
@@ -433,7 +460,7 @@ class Call:
                 )
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
-                
+
             else:
                 try:
                     if video:
@@ -451,7 +478,7 @@ class Call:
                         original_chat_id,
                         text=_["call_6"],
                     )
-                
+
                 if videoid == "telegram":
                     button = stream_markup(_, chat_id)
                     run = await app.send_photo(
@@ -498,7 +525,7 @@ class Call:
     async def ping(self):
         """Get average ping from all active PyTgCalls clients"""
         pings = []
-        
+
         assistants = [
             (config.STRING1, self.one, "Assistant 1"),
             (config.STRING2, self.two, "Assistant 2"),
@@ -506,28 +533,27 @@ class Call:
             (config.STRING4, self.four, "Assistant 4"),
             (config.STRING5, self.five, "Assistant 5"),
         ]
-        
+
         for config_string, client, name in assistants:
             if config_string and client:
                 try:
-                    # ping is a property in PyTgCalls 2.x, not a coroutine
                     ping_value = client.ping
                     if ping_value and ping_value > 0:
                         pings.append(ping_value)
                 except Exception as e:
                     LOGGER(__name__).warning(f"{name} ping error: {e}")
                     continue
-        
+
         if not pings:
             return "0.0"
-        
+
         avg_ping = sum(pings) / len(pings)
         return str(round(avg_ping, 3))
 
     async def start(self):
         """Start all PyTgCalls clients"""
         LOGGER(__name__).info("Starting PyTgCalls Clients...\n")
-        
+
         clients = [
             (config.STRING1, self.one, "Assistant 1"),
             (config.STRING2, self.two, "Assistant 2"),
@@ -535,7 +561,7 @@ class Call:
             (config.STRING4, self.four, "Assistant 4"),
             (config.STRING5, self.five, "Assistant 5"),
         ]
-        
+
         for config_string, client, name in clients:
             if config_string and client:
                 try:
@@ -547,10 +573,20 @@ class Call:
     async def decorators(self):
         """
         PyTgCalls 2.x uses different event handling.
-        You should handle stream_end events manually through decorators
-        or by registering handlers after initialization.
+        Register stream_end handlers for automatic call management.
         """
-        pass
+        async def on_stream_end(client, update):
+            chat_id = update.chat_id
+            LOGGER(__name__).info(f"Stream ended in chat {chat_id}")
+            await self.change_stream(client, chat_id)
+
+        # Register the stream_end handler for all active clients
+        for client in [self.one, self.two, self.three, self.four, self.five]:
+            if client:
+                try:
+                    client.on_stream_end()(on_stream_end)
+                except Exception as e:
+                    LOGGER(__name__).error(f"Error registering stream_end handler: {e}")
 
 
 Aviax = Call()
