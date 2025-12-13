@@ -26,3 +26,5 @@ yt-dlp
 youtube-search
 youtube-search-python
 py-yt-search
+google-generativeai>=0.3.0
+gtts>=2.5.0
