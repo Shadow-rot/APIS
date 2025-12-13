@@ -11,6 +11,7 @@ from AviaxMusic.misc import sudo
 from AviaxMusic.plugins import ALL_MODULES
 from AviaxMusic.utils.database import get_banned_users, get_gbanned
 from config import BANNED_USERS
+from AviaxMusic.plugins.c import setup_chatbot
 
 
 async def init():
@@ -55,6 +56,8 @@ async def init():
     await idle()
     await app.stop()
     await userbot.stop()
+    chatbot = setup_chatbot(app)
+    
     LOGGER("AviaxMusic").info("Stopping Aviax Music Bot...")
 
 
