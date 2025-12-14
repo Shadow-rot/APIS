@@ -1,389 +1,273 @@
-"""
-Advanced AI Chatbot for Telegram with Human-like Conversations
-Features: Multi-language, Voice Messages, Stickers, GIFs, User Data Learning
-"""
-
 import asyncio
 import random
-import re
-from datetime import datetime
-from typing import Dict, List, Optional
 import json
-from collections import defaultdict
-
-from pyrogram import Client, filters
+import os
+from datetime import datetime
+from dataclasses import dataclass, field, asdict
+from typing import List, Dict, Optional
+from pyrogram import filters
 from pyrogram.types import Message
 from pyrogram.enums import ChatAction
-import google.generativeai as genai
-from gtts import gTTS
-import os
+from AviaxMusic import app
 
-# Configuration
-class ChatbotConfig:
-    # Get free Gemini API key from https://makersuite.google.com/app/apikey
+@dataclass
+class ChatMessage:
+    role: str
+    text: str
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
+
+@dataclass
+class UserProfile:
+    name: str = "Friend"
+    messages: List[ChatMessage] = field(default_factory=list)
+    count: int = 0
+    first_seen: str = field(default_factory=lambda: datetime.now().isoformat())
+    last_seen: str = field(default_factory=lambda: datetime.now().isoformat())
+
+class Config:
     GEMINI_API_KEY = "AIzaSyAT_aXQqEDrySmB6V0Y-sEqBnKCxWHymrQ"
-    
-    # Voice settings
-    VOICE_LANGUAGE = "hi"  # Hindi voice (Indian)
-    VOICE_ACCENT = "co.in"  # Indian accent
-    
-    # Response settings
-    MAX_HISTORY = 50
-    TYPING_DELAY = 2  # seconds
-    
-    # Personality
-    BOT_PERSONALITY = """You are a friendly, warm Indian chatbot assistant. 
-    You speak naturally like a real person from India, mixing English and Hinglish when appropriate.
-    You're helpful, witty, and use casual language. You remember context and user details.
-    You can be funny, use emojis naturally, and relate to Indian culture.
-    When users share personal info, you remember it for future conversations."""
+    ENABLE_AI = True
+    ENABLE_VOICE = False
+    TYPING_DELAY = 1
+    DATA_FILE = "chatbot_users.json"
+    MAX_HISTORY = 20
 
-# User data storage
 class UserDatabase:
     def __init__(self):
-        self.users_data: Dict[int, Dict] = defaultdict(lambda: {
-            "name": "",
-            "first_seen": None,
-            "last_seen": None,
-            "message_count": 0,
-            "preferences": {},
-            "conversation_history": [],
-            "facts": []  # Personal facts learned about user
-        })
-        self.load_data()
+        self.users: Dict[int, UserProfile] = {}
+        self.load()
     
-    def load_data(self):
+    def load(self):
         try:
-            with open("user_database.json", "r") as f:
-                data = json.load(f)
-                self.users_data.update(data)
-        except FileNotFoundError:
+            if os.path.exists(Config.DATA_FILE):
+                with open(Config.DATA_FILE, 'r') as f:
+                    data = json.load(f)
+                    for uid, udata in data.items():
+                        msgs = [ChatMessage(**m) for m in udata.get('messages', [])]
+                        self.users[int(uid)] = UserProfile(
+                            name=udata['name'],
+                            messages=msgs,
+                            count=udata['count'],
+                            first_seen=udata['first_seen'],
+                            last_seen=udata['last_seen']
+                        )
+        except:
             pass
     
-    def save_data(self):
-        with open("user_database.json", "w") as f:
-            json.dump(dict(self.users_data), f, indent=2, default=str)
-    
-    def update_user(self, user_id: int, message: Message):
-        user = self.users_data[user_id]
-        
-        if not user["first_seen"]:
-            user["first_seen"] = datetime.now()
-        
-        user["last_seen"] = datetime.now()
-        user["message_count"] += 1
-        user["name"] = message.from_user.first_name or "Friend"
-        
-        # Add to conversation history
-        if len(user["conversation_history"]) > ChatbotConfig.MAX_HISTORY:
-            user["conversation_history"].pop(0)
-        
-        user["conversation_history"].append({
-            "text": message.text or "[media]",
-            "timestamp": datetime.now(),
-            "type": "user"
-        })
-        
-        self.save_data()
-    
-    def add_bot_response(self, user_id: int, response: str):
-        user = self.users_data[user_id]
-        user["conversation_history"].append({
-            "text": response,
-            "timestamp": datetime.now(),
-            "type": "bot"
-        })
-        self.save_data()
-    
-    def add_user_fact(self, user_id: int, fact: str):
-        user = self.users_data[user_id]
-        if fact not in user["facts"]:
-            user["facts"].append(fact)
-            self.save_data()
-    
-    def get_user_context(self, user_id: int) -> str:
-        user = self.users_data[user_id]
-        context = f"User's name: {user['name']}\n"
-        
-        if user["message_count"] > 1:
-            context += f"You've chatted {user['message_count']} times before.\n"
-        
-        if user["facts"]:
-            context += f"What you know about them: {', '.join(user['facts'])}\n"
-        
-        # Recent conversation context
-        recent = user["conversation_history"][-10:]
-        if recent:
-            context += "\nRecent conversation:\n"
-            for msg in recent:
-                role = "User" if msg["type"] == "user" else "You"
-                context += f"{role}: {msg['text']}\n"
-        
-        return context
-
-# AI Response Generator
-class AIBrain:
-    def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
-        self.chat_sessions = {}
-    
-    async def generate_response(self, user_id: int, message: str, context: str) -> str:
+    def save(self):
         try:
-            # Create system prompt with personality and context
-            full_prompt = f"""{ChatbotConfig.BOT_PERSONALITY}
+            data = {}
+            for uid, user in self.users.items():
+                user_dict = asdict(user)
+                data[str(uid)] = user_dict
+            with open(Config.DATA_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+        except:
+            pass
+    
+    def get_user(self, user_id: int) -> UserProfile:
+        if user_id not in self.users:
+            self.users[user_id] = UserProfile()
+        return self.users[user_id]
+    
+    def update_user(self, user_id: int, name: str):
+        user = self.get_user(user_id)
+        user.name = name
+        user.last_seen = datetime.now().isoformat()
+        user.count += 1
+        self.save()
+    
+    def add_message(self, user_id: int, role: str, text: str):
+        user = self.get_user(user_id)
+        user.messages.append(ChatMessage(role=role, text=text))
+        if len(user.messages) > Config.MAX_HISTORY:
+            user.messages = user.messages[-Config.MAX_HISTORY:]
+        self.save()
 
-{context}
-
-User's message: {message}
-
-Respond naturally and warmly. Use the user's name occasionally. Be conversational."""
-
-            response = await asyncio.to_thread(
-                self.model.generate_content,
-                full_prompt
-            )
+class AIEngine:
+    def __init__(self):
+        self.available = self.init_ai()
+    
+    def init_ai(self):
+        if not Config.ENABLE_AI or Config.GEMINI_API_KEY == "YOUR_API_KEY_HERE":
+            return False
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=Config.GEMINI_API_KEY)
+            self.model = genai.GenerativeModel('gemini-pro')
+            return True
+        except:
+            return False
+    
+    async def generate(self, name: str, message: str, history: List[ChatMessage]) -> str:
+        if not self.available:
+            return self.fallback(message)
+        
+        try:
+            context = f"You are a friendly Indian chatbot talking to {name}. Be natural and conversational.\n\n"
             
+            if history:
+                context += "Recent chat:\n"
+                for msg in history[-6:]:
+                    context += f"{msg.role}: {msg.text}\n"
+            
+            prompt = f"{context}\nUser: {message}\nYou:"
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text
-        except Exception as e:
-            print(f"AI Error: {e}")
-            return self._get_fallback_response()
+        except:
+            return self.fallback(message)
     
-    def _get_fallback_response(self) -> str:
-        responses = [
-            "Haha, sorry yaar! My brain just went blank for a sec. Say that again? 😅",
-            "Oops! Can you repeat that? I got distracted 😊",
-            "Wait wait, my connection glitched. What were you saying?",
-            "Arre! Technical issues. Tell me again na? 🙏"
-        ]
-        return random.choice(responses)
-    
-    def extract_user_facts(self, message: str) -> List[str]:
-        """Extract personal information from user messages"""
-        facts = []
+    def fallback(self, message: str) -> str:
+        msg = message.lower()
         
-        # Pattern matching for common facts
-        patterns = {
-            r"my name is (\w+)": "name is {}",
-            r"i am (\d+) years old": "is {} years old",
-            r"i live in ([\w\s]+)": "lives in {}",
-            r"i work (?:as a |as an )?(\w+)": "works as {}",
-            r"i like (\w+)": "likes {}",
-            r"my (?:favorite|favourite) ([\w\s]+) is ([\w\s]+)": "favorite {} is {}"
-        }
+        if any(w in msg for w in ['hi', 'hello', 'hey']):
+            return random.choice([
+                "Hey! How's it going? 😊",
+                "Hello! What's up? 👋",
+                "Hi there! 😄"
+            ])
         
-        for pattern, template in patterns.items():
-            match = re.search(pattern, message.lower())
-            if match:
-                facts.append(template.format(*match.groups()))
+        if any(w in msg for w in ['how are you', 'wassup']):
+            return random.choice([
+                "I'm great! How about you? 😊",
+                "All good! What's new? 💫"
+            ])
         
-        return facts
+        if any(w in msg for w in ['thanks', 'thank you']):
+            return random.choice([
+                "You're welcome! 😊",
+                "Happy to help! 💙"
+            ])
+        
+        if any(w in msg for w in ['bye', 'goodbye']):
+            return random.choice([
+                "See you! 👋",
+                "Bye! Take care! 💫"
+            ])
+        
+        return random.choice([
+            "Interesting! Tell me more 😊",
+            "I see! Go on... 💭",
+            "Cool! 🌟"
+        ])
 
-# Sticker and GIF Manager
-class MediaManager:
-    # Popular sticker sets
-    STICKER_RESPONSES = {
-        "happy": ["CAACAgIAAxkBAAEBCQ5lK", "CAACAgQAAxkBAAEBCQ"],  # Happy stickers
-        "sad": ["CAACAgIAAxkBAAEBCRBlK", "CAACAgQAAxkBAAEBCR"],    # Sad stickers
-        "laugh": ["CAACAgIAAxkBAAEBCRJlK", "CAACAgQAAxkBAAEBCS"],  # Laughing
-        "love": ["CAACAgIAAxkBAAEBCRNlK", "CAACAgQAAxkBAAEBCT"],   # Love/Heart
-        "thumbsup": ["CAACAgIAAxkBAAEBCRRlK"],                      # Thumbs up
-        "celebrate": ["CAACAgIAAxkBAAEBCRVlK"],                     # Party/Celebration
-        "thinking": ["CAACAgIAAxkBAAEBCRZlK"],                      # Thinking
-    }
-    
-    # GIF animations (using animation file IDs or URLs)
-    GIF_RESPONSES = {
-        "excited": ["https://media.giphy.com/media/excited"],
-        "dancing": ["https://media.giphy.com/media/dancing"],
-        "waving": ["https://media.giphy.com/media/waving"],
+class MediaHandler:
+    stickers = {
+        "happy": "CAACAgIAAxkBAAEM4hhmVy",
+        "sad": "CAACAgQAAxkBAAEM4jhm",
+        "love": "CAACAgIAAxkBAAEM4khm",
+        "laugh": "CAACAgIAAxkBAAEM4mhm"
     }
     
     @staticmethod
-    def should_send_media(message: str) -> Optional[str]:
-        """Determine if message warrants a sticker/GIF response"""
-        message = message.lower()
-        
-        if any(word in message for word in ["haha", "lol", "😂", "funny", "hilarious"]):
+    def detect_emotion(text: str) -> Optional[str]:
+        text = text.lower()
+        if any(w in text for w in ['haha', 'lol', '😂', 'funny']):
             return "laugh"
-        elif any(word in message for word in ["sad", "😢", "upset", "crying"]):
+        if any(w in text for w in ['sad', '😢', 'crying']):
             return "sad"
-        elif any(word in message for word in ["love", "❤️", "amazing", "awesome"]):
+        if any(w in text for w in ['love', '❤️', 'amazing']):
             return "love"
-        elif any(word in message for word in ["thanks", "thank you", "great", "perfect"]):
-            return "thumbsup"
-        elif any(word in message for word in ["yay", "woohoo", "congratulations", "party"]):
-            return "celebrate"
-        
+        if any(w in text for w in ['happy', '😊', 'great']):
+            return "happy"
         return None
     
     @staticmethod
-    def get_random_sticker(emotion: str) -> Optional[str]:
-        if emotion in MediaManager.STICKER_RESPONSES:
-            return random.choice(MediaManager.STICKER_RESPONSES[emotion])
-        return None
-
-# Voice Message Generator
-class VoiceGenerator:
-    @staticmethod
-    async def create_voice_message(text: str, user_id: int) -> str:
-        """Generate voice message in Indian accent"""
+    async def create_voice(text: str, user_id: int) -> Optional[str]:
+        if not Config.ENABLE_VOICE:
+            return None
         try:
-            # Clean text for speech
-            clean_text = re.sub(r'[*_`~]', '', text)
-            clean_text = re.sub(r'https?://\S+', '', clean_text)
-            
-            # Generate voice file
-            filename = f"voice_{user_id}_{datetime.now().timestamp()}.mp3"
-            
-            tts = gTTS(
-                text=clean_text,
-                lang=ChatbotConfig.VOICE_LANGUAGE,
-                tld=ChatbotConfig.VOICE_ACCENT,
-                slow=False
-            )
-            
+            from gtts import gTTS
+            clean = text.replace('*', '').replace('_', '')[:200]
+            filename = f"voice_{user_id}_{int(datetime.now().timestamp())}.mp3"
+            tts = gTTS(text=clean, lang='hi', tld='co.in', slow=False)
             await asyncio.to_thread(tts.save, filename)
             return filename
-        except Exception as e:
-            print(f"Voice generation error: {e}")
+        except:
             return None
 
-# Main Chatbot Handler
-class AdvancedChatbot:
-    def __init__(self, app: Client):
-        self.app = app
+class Chatbot:
+    def __init__(self):
         self.db = UserDatabase()
-        self.ai = AIBrain(ChatbotConfig.GEMINI_API_KEY)
-        self.media = MediaManager()
-        self.voice = VoiceGenerator()
+        self.ai = AIEngine()
+        self.media = MediaHandler()
     
-    async def handle_message(self, client: Client, message: Message):
-        """Main message handler"""
+    async def handle_text(self, message: Message):
         try:
             user_id = message.from_user.id
+            user_name = message.from_user.first_name or "Friend"
             
-            # Update user database
-            self.db.update_user(user_id, message)
+            self.db.update_user(user_id, user_name)
+            self.db.add_message(user_id, "User", message.text)
             
-            # Extract and store any personal facts
-            if message.text:
-                facts = self.ai.extract_user_facts(message.text)
-                for fact in facts:
-                    self.db.add_user_fact(user_id, fact)
+            await message._client.send_chat_action(message.chat.id, ChatAction.TYPING)
+            await asyncio.sleep(Config.TYPING_DELAY)
             
-            # Show typing action for realism
-            await client.send_chat_action(message.chat.id, ChatAction.TYPING)
-            await asyncio.sleep(ChatbotConfig.TYPING_DELAY)
+            user = self.db.get_user(user_id)
+            response = await self.ai.generate(user_name, message.text, user.messages)
             
-            # Handle different message types
-            if message.text:
-                await self._handle_text_message(message, user_id)
-            elif message.sticker:
-                await self._handle_sticker_message(message, user_id)
-            elif message.photo or message.video:
-                await self._handle_media_message(message, user_id)
-            elif message.voice or message.audio:
-                await self._handle_voice_message(message, user_id)
-        
+            self.db.add_message(user_id, "Bot", response)
+            
+            await message.reply_text(response)
+            
+            if random.random() > 0.7:
+                emotion = self.media.detect_emotion(message.text)
+                if emotion and emotion in self.media.stickers:
+                    try:
+                        await message.reply_sticker(self.media.stickers[emotion])
+                    except:
+                        pass
+            
+            if Config.ENABLE_VOICE and len(response) > 100 and random.random() > 0.95:
+                voice = await self.media.create_voice(response, user_id)
+                if voice and os.path.exists(voice):
+                    try:
+                        await message.reply_voice(voice)
+                        os.remove(voice)
+                    except:
+                        if os.path.exists(voice):
+                            os.remove(voice)
         except Exception as e:
-            print(f"Error handling message: {e}")
-            await message.reply_text("Oops! Something went wrong 😅")
+            print(f"Error: {e}")
+            try:
+                await message.reply_text("Oops! Something went wrong 😅")
+            except:
+                pass
     
-    async def _handle_text_message(self, message: Message, user_id: int):
-        """Handle text messages with AI response"""
-        # Get user context
-        context = self.db.get_user_context(user_id)
-        
-        # Generate AI response
-        response = await self.ai.generate_response(
-            user_id,
-            message.text,
-            context
-        )
-        
-        # Store bot response
-        self.db.add_bot_response(user_id, response)
-        
-        # Check if we should send a sticker too
-        emotion = self.media.should_send_media(message.text)
-        
-        # Send response
-        await message.reply_text(response)
-        
-        # Send sticker if appropriate
-        if emotion and random.random() > 0.5:  # 50% chance
-            sticker = self.media.get_random_sticker(emotion)
-            if sticker:
-                try:
-                    await message.reply_sticker(sticker)
-                except:
-                    pass
-        
-        # Occasionally send voice message (10% chance for longer responses)
-        if len(response) > 50 and random.random() > 0.9:
-            voice_file = await self.voice.create_voice_message(response, user_id)
-            if voice_file:
-                try:
-                    await message.reply_voice(voice_file)
-                    os.remove(voice_file)
-                except Exception as e:
-                    print(f"Voice send error: {e}")
-    
-    async def _handle_sticker_message(self, message: Message, user_id: int):
-        """Respond to stickers with text and maybe another sticker"""
-        responses = [
-            "Haha nice sticker! 😄",
-            "Love that one! 😊",
-            "That's so cute! 🥰",
-            "Epic sticker bro! 🔥",
-            "Lol good one! 😂"
-        ]
-        
-        await message.reply_text(random.choice(responses))
-        
-        # Send a random happy sticker back
-        if random.random() > 0.6:
-            sticker = self.media.get_random_sticker("happy")
-            if sticker:
-                await message.reply_sticker(sticker)
-    
-    async def _handle_media_message(self, message: Message, user_id: int):
-        """Handle photos/videos"""
-        responses = [
-            "Wow, nice pic! 📸",
-            "Looking good! 😍",
-            "That's awesome! ✨",
-            "Beautiful! 🌟",
-            "Cool photo! 📷"
-        ]
-        
-        await message.reply_text(random.choice(responses))
-    
-    async def _handle_voice_message(self, message: Message, user_id: int):
-        """Handle voice messages"""
-        responses = [
-            "Got your voice message! 🎤",
-            "Listening to you! 👂",
-            "Nice voice note! 🔊"
-        ]
-        
-        await message.reply_text(random.choice(responses))
+    async def handle_media(self, message: Message):
+        try:
+            responses = {
+                "sticker": ["Nice sticker! 😄", "Cool! 🔥"],
+                "photo": ["Great pic! 📸", "Nice! ✨"],
+                "video": ["Cool video! 🎥"],
+                "voice": ["Got it! 🎤"],
+            }
+            
+            msg_type = None
+            if message.sticker:
+                msg_type = "sticker"
+            elif message.photo:
+                msg_type = "photo"
+            elif message.video:
+                msg_type = "video"
+            elif message.voice:
+                msg_type = "voice"
+            
+            if msg_type and msg_type in responses:
+                await message.reply_text(random.choice(responses[msg_type]))
+        except:
+            pass
 
-# Setup function for your bot
-def setup_chatbot(app: Client):
-    """Add this to your bot initialization"""
-    
-    chatbot = AdvancedChatbot(app)
-    
-    # Filter for private messages or when bot is mentioned in groups
-    @app.on_message(
-        filters.private | 
-        filters.mentioned | 
-        filters.regex(r"@YourBotUsername")
-    )
-    async def chat_handler(client: Client, message: Message):
-        await chatbot.handle_message(client, message)
-    
-    print("✅ Advanced Chatbot initialized!")
-    return chatbot
+bot = Chatbot()
+
+@app.on_message(filters.private & filters.text & ~filters.bot & ~filters.service)
+async def private_text_handler(client, message: Message):
+    await bot.handle_text(message)
+
+@app.on_message(filters.private & ~filters.text & ~filters.bot & ~filters.service)
+async def private_media_handler(client, message: Message):
+    await bot.handle_media(message)
+
+@app.on_message(filters.group & filters.mentioned & filters.text & ~filters.bot)
+async def group_mention_handler(client, message: Message):
+    await bot.handle_text(message)
